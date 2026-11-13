@@ -28,7 +28,20 @@ FZFTAB_SHA=eec482c89e536884c5101d20944905e93d864b2c22404d01381d4e80f9cbf718
 PACOTES="xorg bspwm sxhkd polybar picom rofi dunst alacritty feh xsettingsd jgmenu clipcat
 xdo xdotool jq ImageMagick7 maim xclip pamixer playerctl pavucontrol pulseaudio
 i3lock-color webp webp-pixbuf-loader bash gsed coreutils git curl dbus jetbrains-mono noto-basic
-papirus-icon-theme eza zoxide fzf bat gawk gnugrep"
+papirus-icon-theme eza zoxide fzf bat gawk gnugrep fastfetch"
+
+# ferramentas de desenvolvimento backend (opcional). Os py3xx-* entram depois,
+# com a versão do python padrão do repositório. Sem Docker no FreeBSD.
+DEV_PKGS="neovim lazygit ripgrep fd-find tmux gh mise uv go-yq xh python3 node22 npm-node22 deno
+sqlite3 postgresql17-client mariadb114-client valkey hs-ShellCheck"
+DEV_PY="httpie pgcli pre-commit"
+
+# IA local: GGUF oficiais do Qwen3 no Hugging Face (arquivo e sha256 fixados)
+HF=https://huggingface.co/Qwen
+IA_1=Qwen3-1.7B-GGUF/Qwen3-1.7B-Q8_0.gguf;    IA_1_SHA=061b54daade076b5d3362dac252678d17da8c68f07560be70818cace6590cb1a
+IA_2=Qwen3-4B-GGUF/Qwen3-4B-Q4_K_M.gguf;      IA_2_SHA=7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5
+IA_3=Qwen3-8B-GGUF/Qwen3-8B-Q4_K_M.gguf;      IA_3_SHA=d98cdcbd03e17ce47681435b5150e34c1417f50b5c0019dd560e4882c5745785
+IA_4=Qwen3-14B-GGUF/Qwen3-14B-Q4_K_M.gguf;    IA_4_SHA=500a8806e85ee9c83f3ae08420295592451379b4f8cf2d0f41c15dffeb6b81f0
 
 # ---------- utilitários ----------
 cor() { printf '\033[%sm%s\033[0m\n' "$1" "$2"; }
@@ -112,8 +125,34 @@ AUTOX=0; [ "$LOGIN" = 2 ] && AUTOX=1
 TERMINAL=0
 sim "Terminal estilo AurTTY (bash + oh-my-bash powerline + ble.sh + fzf-tab) como shell padrão?" s && TERMINAL=1
 
+DEV=0
+sim "Ferramentas de desenvolvimento backend (nvim, node, deno, python, mise, clientes de banco...)?" s && DEV=1
+
+LINUXAPPS=0
+sim "Google Chrome e VS Code oficiais (Debian na emulação Linux, baixa ~1,5 GB)?" s && LINUXAPPS=1
+
+# opencode só tem binário Linux: depende do Debian da opção acima
+OPENCODE=0
+if [ $LINUXAPPS -eq 1 ]; then
+  sim "opencode (agente de código com IA no terminal)?" s && OPENCODE=1
+fi
+
+# IA local: sugere o modelo pela RAM desta máquina
+IA=0
+RAM_GB=$(( $(sysctl -n hw.physmem) / 1073741824 ))
+if   [ "$RAM_GB" -lt 7 ];  then SUG_IA=1
+elif [ "$RAM_GB" -lt 15 ]; then SUG_IA=2
+else SUG_IA=3; fi
 echo
-info "Resumo: usuário=$USUARIO teclado=$TECLADO vídeo=$VIDEO login=$LOGIN terminal=$TERMINAL"
+info "IA local (llama.cpp + Qwen3, roda offline; usa a GPU se houver). RAM detectada: ${RAM_GB} GB"
+info "        0) não instalar   1) Qwen3 1.7B (1,7 GB, até 6 GB de RAM)   2) Qwen3 4B (2,3 GB, 8 GB de RAM)"
+info "        3) Qwen3 8B (4,7 GB, 16 GB de RAM ou GPU de 8 GB)   4) Qwen3 14B (8,4 GB, 32 GB de RAM ou GPU de 12 GB)"
+perguntar "Modelo de IA" "$SUG_IA"
+IA=$RESPOSTA
+case $IA in 0|1|2|3|4) ;; *) erro "opção de IA inválida" ;; esac
+
+echo
+info "Resumo: usuário=$USUARIO teclado=$TECLADO vídeo=$VIDEO login=$LOGIN terminal=$TERMINAL dev=$DEV linux=$LINUXAPPS opencode=$OPENCODE ia=$IA"
 sim "Continuar?" s || exit 0
 
 # ---------- pacotes ----------
@@ -130,8 +169,16 @@ case $VIDEO in
   4) VIDEO_PKGS="nvidia-driver nvidia-xconfig" ;;
 esac
 
+# py3xx do python padrão (python3 -> python312 -> py312-httpie...)
+EXTRA_PKGS=""
+if [ $DEV -eq 1 ]; then
+  PY=$(pkg rquery '%dn' python3 2>/dev/null | grep '^python3' | head -1 | sed 's/^python/py/')
+  EXTRA_PKGS=$DEV_PKGS
+  for p in $DEV_PY; do EXTRA_PKGS="$EXTRA_PKGS ${PY:-py312}-$p"; done
+fi
+
 FALHARAM=""
-for p in $PACOTES $VIDEO_PKGS; do
+for p in $PACOTES $VIDEO_PKGS $EXTRA_PKGS; do
   printf '    %-28s' "$p"
   if pkg install -q "$p" </dev/null >>"$LOG" 2>&1; then cor '0;32' ok; else cor '0;31' falhou; FALHARAM="$FALHARAM $p"; fi
 done
@@ -240,6 +287,7 @@ cat > "$CASA/.xinitrc" <<'EOF'
 # gerado pelo freebsd-bspwm-aurtty
 export LANG=${LANG:-pt_BR.UTF-8}
 export XDG_CURRENT_DESKTOP=bspwm
+command -v google-chrome >/dev/null && export BROWSER=google-chrome
 exec dbus-launch --exit-with-session bspwm
 EOF
 
@@ -281,6 +329,7 @@ if [ "$LOGIN" = 1 ]; then
 # freebsd-bspwm-aurtty: sessão bspwm aberta pela tela de login
 export LANG=${LANG:-pt_BR.UTF-8}
 export XDG_CURRENT_DESKTOP=bspwm
+command -v google-chrome >/dev/null && export BROWSER=google-chrome
 exec dbus-launch --exit-with-session bspwm
 EOF
   chmod 755 /usr/local/bin/aurtty-session
@@ -331,6 +380,19 @@ EOF
 greeter-session = lightdm-gtk-greeter
 user-session = bspwm-aurtty
 EOF
+  # botões desligar/reiniciar/suspender: o greeter roda como "lightdm", fora
+  # de uma sessão ativa, e o polkit nega. Libera para ele e para wheel/operator.
+  mkdir -p /usr/local/etc/polkit-1/rules.d
+  cat > /usr/local/etc/polkit-1/rules.d/50-aurtty-energia.rules <<'EOF'
+// gerado pelo freebsd-bspwm-aurtty
+// tela de login (usuario lightdm) e grupos wheel/operator podem desligar, reiniciar e suspender
+polkit.addRule(function (action, subject) {
+    if (action.id.indexOf("org.freedesktop.consolekit.system.") == 0 &&
+        (subject.user == "lightdm" || subject.isInGroup("wheel") || subject.isInGroup("operator"))) {
+        return polkit.Result.YES;
+    }
+});
+EOF
   sysrc -q lightdm_enable=YES >/dev/null
   info "LightDM ativado (abre sozinho no boot)"
 else
@@ -343,25 +405,203 @@ if [ $TERMINAL -eq 1 ]; then
   baixar_verificado "$OMB_URL" "$OMB_SHA" "$TMP/omb.tar.gz"
   baixar_verificado "$BLE_URL" "$BLE_SHA" "$TMP/ble.tar.xz"
   baixar_verificado "$FZFTAB_URL" "$FZFTAB_SHA" "$TMP/fzftab.tar.gz"
-  rm -rf "$CASA/.oh-my-bash" "$CASA/.local/share/blesh" "$CASA/.local/share/fzf-tab-completion"
-  mkdir -p "$CASA/.oh-my-bash" "$CASA/.local/share/blesh" "$CASA/.local/share/fzf-tab-completion" "$CASA/.local/bin"
-  tar -xf "$TMP/omb.tar.gz" -C "$CASA/.oh-my-bash" --strip-components 1
-  tar -xf "$TMP/ble.tar.xz" -C "$CASA/.local/share/blesh" --strip-components 1
-  tar -xf "$TMP/fzftab.tar.gz" -C "$CASA/.local/share/fzf-tab-completion" --strip-components 1
-  install -m 755 "$RAIZ/extras/bash/fzf-tab-preview" "$CASA/.local/bin/fzf-tab-preview"
-  if [ -e "$CASA/.bashrc" ] && ! grep -q 'freebsd-bspwm-aurtty' "$CASA/.bashrc"; then
-    mkdir -p "$BACKUP"; mv "$CASA/.bashrc" "$BACKUP/"
-  fi
-  cp "$RAIZ/extras/bash/bashrc" "$CASA/.bashrc"
-  # o bash de login lê o .bash_profile: repassa para o .profile (startx) e o .bashrc
-  cat > "$CASA/.bash_profile" <<'EOF2'
+  # mesmo terminal para o usuário e para o root (su -)
+  for alvo in "$CASA:$USUARIO:$GRUPO" "/root:root:wheel"; do
+    casa=${alvo%%:*}; dono=${alvo#*:}; dono=${dono%%:*}; grupo=${alvo##*:}
+    rm -rf "$casa/.oh-my-bash" "$casa/.local/share/blesh" "$casa/.local/share/fzf-tab-completion"
+    mkdir -p "$casa/.oh-my-bash" "$casa/.local/share/blesh" "$casa/.local/share/fzf-tab-completion" "$casa/.local/bin"
+    tar -xf "$TMP/omb.tar.gz" -C "$casa/.oh-my-bash" --strip-components 1
+    tar -xf "$TMP/ble.tar.xz" -C "$casa/.local/share/blesh" --strip-components 1
+    tar -xf "$TMP/fzftab.tar.gz" -C "$casa/.local/share/fzf-tab-completion" --strip-components 1
+    install -m 755 "$RAIZ/extras/bash/fzf-tab-preview" "$casa/.local/bin/fzf-tab-preview"
+    if [ -e "$casa/.bashrc" ] && ! grep -q 'freebsd-bspwm-aurtty' "$casa/.bashrc"; then
+      mkdir -p "$BACKUP"; mv "$casa/.bashrc" "$BACKUP/bashrc-$dono"
+    fi
+    cp "$RAIZ/extras/bash/bashrc" "$casa/.bashrc"
+    # o bash de login lê o .bash_profile: repassa para o .profile (startx) e o .bashrc
+    cat > "$casa/.bash_profile" <<'EOF2'
 # gerado pelo freebsd-bspwm-aurtty
 [ -f ~/.bashrc ] && . ~/.bashrc
 [ -f ~/.profile ] && . ~/.profile
 EOF2
+    chown -R "$dono:$grupo" "$casa/.oh-my-bash" "$casa/.local" "$casa/.bashrc" "$casa/.bash_profile"
+  done
   pw usermod "$USUARIO" -s /usr/local/bin/bash
-  chown -R "$USUARIO:$GRUPO" "$CASA/.oh-my-bash" "$CASA/.local" "$CASA/.bashrc" "$CASA/.bash_profile"
+  # O shell do root continua /bin/sh (o FreeBSD recomenda: entra mesmo se o
+  # bash do pkg quebrar). No login interativo (su -, console) ele vira bash.
+  if ! grep -q 'freebsd-bspwm-aurtty: sh interativo' /root/.profile; then
+    cat >> /root/.profile <<'EOF2'
+# freebsd-bspwm-aurtty: sh interativo vira bash com o tema (o shell continua /bin/sh)
+case $- in
+  *i*) [ -z "${BASH_VERSION:-}" ] && [ -x /usr/local/bin/bash ] && exec /usr/local/bin/bash -l ;;
+esac
+EOF2
+  fi
+  info "root (su -): mesmo terminal, com /bin/sh como shell de segurança"
   info "shell padrão de $USUARIO: /usr/local/bin/bash"
+fi
+
+# ---------- Chrome e VS Code (Debian na emulação Linux) ----------
+# O FreeBSD procura binários Linux primeiro em /compat/linux, então um Debian
+# instalado ali roda direto pelo usuário, sem chroot. /tmp (socket do X) e
+# /home entram por nullfs; sem resolv.conf no Debian ele usa o do FreeBSD.
+if [ $LINUXAPPS -eq 1 ]; then
+  titulo "Chrome e VS Code: Debian 13 em /compat/linux"
+  sysrc -q linux_enable=YES >/dev/null
+  kldload -n linux64
+  pkg install -q debootstrap </dev/null >>"$LOG" 2>&1 || FALHARAM="$FALHARAM debootstrap"
+  if [ ! -f /compat/linux/etc/debian_version ]; then
+    info "baixando o Debian base (alguns minutos)"
+    debootstrap --arch=amd64 trixie /compat/linux http://deb.debian.org/debian >>"$LOG" 2>&1 \
+      || cor '1;31' "    debootstrap falhou (veja $LOG)"
+  fi
+  service linux start >>"$LOG" 2>&1 || true
+  if ! grep -q '/compat/linux/tmp' /etc/fstab; then
+    cat >> /etc/fstab <<'EOF'
+# freebsd-bspwm-aurtty: Debian em /compat/linux enxerga o /tmp (X11) e o /home reais
+/tmp	/compat/linux/tmp	nullfs	rw,late	0	0
+/home	/compat/linux/home	nullfs	rw,late	0	0
+EOF
+  fi
+  mount | grep -q ' /compat/linux/tmp ' || mount /compat/linux/tmp
+  mount | grep -q ' /compat/linux/home ' || mount /compat/linux/home
+  cp /etc/resolv.conf /compat/linux/etc/resolv.conf   # o apt roda em chroot e precisa dele
+  # repositórios oficiais do Google e da Microsoft (chaves deles, assinadas no apt)
+  chroot /compat/linux /bin/bash >>"$LOG" 2>&1 <<'EOF' || cor '1;31' "    instalação no Debian falhou (veja $LOG)"
+set -e
+export DEBIAN_FRONTEND=noninteractive LANG=C
+# sem systemd o pacote dbus não cria o grupo messagebus e o dpkg para
+getent group messagebus >/dev/null || groupadd -r messagebus
+getent passwd messagebus >/dev/null || useradd -r -g messagebus -d /nonexistent -s /usr/sbin/nologin messagebus
+apt-get update
+apt-get install -y --no-install-recommends ca-certificates curl gpg fonts-noto-core fonts-noto-color-emoji xdg-utils libgl1 libegl1 libgbm1 libasound2t64 libnss3
+install -d -m 755 /etc/apt/keyrings
+curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor --yes -o /etc/apt/keyrings/google.gpg
+echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google.gpg] https://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list
+curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor --yes -o /etc/apt/keyrings/microsoft.gpg
+echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/code stable main" > /etc/apt/sources.list.d/vscode.list
+apt-get update
+apt-get install -y google-chrome-stable code
+EOF
+  rm -f /compat/linux/etc/resolv.conf
+
+  # lançadores: o sandbox do Chrome/Electron usa namespaces do Linux, que a emulação não tem
+  cat > /usr/local/bin/google-chrome <<'EOF'
+#!/bin/sh
+# freebsd-bspwm-aurtty: Chrome do Debian em /compat/linux
+exec /compat/linux/opt/google/chrome/chrome --no-sandbox --test-type --password-store=basic "$@"
+EOF
+  cat > /usr/local/bin/code <<'EOF'
+#!/bin/sh
+# freebsd-bspwm-aurtty: VS Code do Debian em /compat/linux
+exec /compat/linux/usr/share/code/code --no-sandbox --disable-gpu "$@"
+EOF
+  chmod 755 /usr/local/bin/google-chrome /usr/local/bin/code
+  mkdir -p /usr/local/share/applications
+  cat > /usr/local/share/applications/google-chrome.desktop <<'EOF'
+[Desktop Entry]
+Name=Google Chrome
+Exec=/usr/local/bin/google-chrome %U
+Icon=/compat/linux/opt/google/chrome/product_logo_128.png
+Type=Application
+Categories=Network;WebBrowser;
+MimeType=text/html;x-scheme-handler/http;x-scheme-handler/https;
+EOF
+  cat > /usr/local/share/applications/code.desktop <<'EOF'
+[Desktop Entry]
+Name=Visual Studio Code
+Exec=/usr/local/bin/code %F
+Icon=/compat/linux/usr/share/pixmaps/vscode.png
+Type=Application
+Categories=Development;IDE;TextEditor;
+EOF
+  [ -x /compat/linux/opt/google/chrome/chrome ] && info "Chrome: google-chrome (super+b abre o navegador)"
+  [ -x /compat/linux/usr/share/code/code ] && info "VS Code: code"
+fi
+
+# ---------- IA local (llama.cpp + Qwen3) ----------
+# llama-server como serviço em 127.0.0.1:8080 (API compatível com a da OpenAI e
+# chat no navegador). O --fit (padrão) mede a GPU (Vulkan) e a RAM e ajusta
+# camadas e contexto sozinho: a mesma config serve com ou sem placa de vídeo.
+if [ "$IA" != 0 ]; then
+  titulo "IA local: llama.cpp + $(eval echo \$IA_$IA | cut -d/ -f2)"
+  for p in llama-cpp aichat; do
+    pkg install -q "$p" </dev/null >>"$LOG" 2>&1 || FALHARAM="$FALHARAM $p"
+  done
+  id llama >/dev/null 2>&1 || pw useradd llama -c "llama-server" -d /nonexistent -s /usr/sbin/nologin -G video
+  MODELOS=/usr/local/share/llama/models
+  mkdir -p "$MODELOS"
+  ARQ=$(eval echo \$IA_$IA); SHA=$(eval echo \$IA_${IA}_SHA); GGUF="$MODELOS/${ARQ#*/}"
+  if [ ! -f "$GGUF" ] || [ "$(sha256 -q "$GGUF")" != "$SHA" ]; then
+    info "baixando o modelo (pode levar alguns minutos)"
+    baixar_verificado "$HF/${ARQ%%/*}/resolve/main/${ARQ#*/}" "$SHA" "$GGUF"
+  fi
+  chmod 644 "$GGUF"
+  sysrc -q llama_server_enable=YES llama_server_user=llama llama_server_model="$GGUF" \
+    llama_server_args="--host 127.0.0.1 --port 8080 --alias local --parallel 1" >/dev/null
+  service llama-server restart >>"$LOG" 2>&1 || service llama-server start >>"$LOG" 2>&1 || true
+
+  # aichat: chat no terminal usando o servidor local
+  mkdir -p "$CASA/.config/aichat"
+  cat > "$CASA/.config/aichat/config.yaml" <<'EOF'
+# gerado pelo freebsd-bspwm-aurtty: IA local (llama-server em 127.0.0.1:8080)
+model: local:local
+clients:
+- type: openai-compatible
+  name: local
+  api_base: http://127.0.0.1:8080/v1
+  models:
+  - name: local
+EOF
+  chown -R "$USUARIO:$GRUPO" "$CASA/.config/aichat"
+  info "IA: 'aichat' no terminal ou http://127.0.0.1:8080 no navegador (log em /var/log/llama-server.log)"
+fi
+
+# ---------- opencode (binário Linux oficial, via npm) ----------
+# Pega a versão mais recente publicada no npm e confere o sha512 informado
+# pelo próprio registro. Roda pela emulação Linux (Debian em /compat/linux).
+if [ $OPENCODE -eq 1 ]; then
+  titulo "opencode"
+  META=$(fetch -qo - https://registry.npmjs.org/opencode-linux-x64/latest) || META=""
+  OC_VER=$(echo "$META" | jq -r .version 2>/dev/null)
+  OC_URL=$(echo "$META" | jq -r .dist.tarball 2>/dev/null)
+  OC_SHA=$(echo "$META" | jq -r .dist.integrity 2>/dev/null | sed 's/^sha512-//' | b64decode -r 2>/dev/null | od -An -v -tx1 | tr -d ' \n')
+  if [ -n "$OC_SHA" ] && fetch -q -o "$TMP/opencode.tgz" "$OC_URL" && [ "$(sha512 -q "$TMP/opencode.tgz")" = "$OC_SHA" ]; then
+    mkdir -p /usr/local/lib/opencode
+    tar -xzf "$TMP/opencode.tgz" -C "$TMP" package/bin/opencode
+    install -m 755 "$TMP/package/bin/opencode" /usr/local/lib/opencode/opencode
+    ln -sf /usr/local/lib/opencode/opencode /usr/local/bin/opencode
+    # sem autoupdate: o binário é do root; para atualizar, rode o instalador de novo
+    mkdir -p "$CASA/.config/opencode"
+    if [ "$IA" != 0 ]; then
+      cat > "$CASA/.config/opencode/opencode.json" <<'EOF'
+{
+  "$schema": "https://opencode.ai/config.json",
+  "autoupdate": false,
+  "provider": {
+    "local": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "IA local (llama.cpp)",
+      "options": { "baseURL": "http://127.0.0.1:8080/v1" },
+      "models": { "local": { "name": "Qwen3 local" } }
+    }
+  }
+}
+EOF
+    else
+      cat > "$CASA/.config/opencode/opencode.json" <<'EOF'
+{
+  "$schema": "https://opencode.ai/config.json",
+  "autoupdate": false
+}
+EOF
+    fi
+    chown -R "$USUARIO:$GRUPO" "$CASA/.config/opencode"
+    info "opencode $OC_VER: rode 'opencode' na pasta do projeto (modelos gratuitos: /models)"
+  else
+    cor '1;31' "    opencode: falha ao baixar ou checksum não confere"
+    FALHARAM="$FALHARAM opencode"
+  fi
 fi
 
 # Sem GPU (vesa/scfb) o OpenGL é por software e o picom com glx inverte

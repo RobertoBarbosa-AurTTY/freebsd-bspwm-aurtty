@@ -54,6 +54,10 @@ shopt -s histappend cmdhist
 PROMPT_COMMAND="history -a${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
 
 # --- ferramentas ---
+# "su" sem traço não carrega o ambiente do root (nem o tema): vira "su -l"
+alias su='su -l'
+# mise: versões de node/python/go... por projeto (arquivo mise.toml)
+command -v mise >/dev/null && eval "$(mise activate bash)"
 if command -v eza >/dev/null; then
   alias ls='eza --icons=always --color=always --group-directories-first'
   alias la='eza --icons=always --color=always --group-directories-first -a'

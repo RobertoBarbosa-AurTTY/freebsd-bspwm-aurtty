@@ -1,9 +1,8 @@
 /* Tema "AurTTY-Login" da tela de login (lightdm-gtk-greeter)
- * Base: TokyoNight-zk (tema GTK do Emilia). Aqui só o visual do greeter.
+ * CSS completo, sem @import: o TokyoNight-zk só tem gtk-3.20/ e depende do
+ * gtk.gresource dele, que o GTK só carrega quando ele é o tema ativo.
  * Paleta Tokyo Night: bg #1a1b26 · alt #222330 · fg #c0caf5 · azul #7aa2f7 · roxo #bb9af7 · vermelho #f7768e
  */
-@import url("../../TokyoNight-zk/gtk-3.0/gtk.css");
-
 * {
   font-family: "JetBrainsMono Nerd Font", monospace;
 }
@@ -72,11 +71,12 @@ menu menuitem:hover {
   padding: 6px 4px;
 }
 
-/* avatar */
+/* avatar: sem padding, para ficar centrado na altura dos campos */
 #user_image_border {
   background: transparent;
   border: none;
-  padding: 0 0 10px 0;
+  padding: 0;
+  margin: 0;
 }
 #user_image { padding: 0; }
 
