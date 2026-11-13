@@ -101,14 +101,19 @@ perguntar "Driver de vídeo" "$SUG"
 VIDEO=$RESPOSTA
 case $VIDEO in 1|2|3|4) ;; *) erro "opção de vídeo inválida" ;; esac
 
-AUTOX=0
-sim "Abrir o bspwm automaticamente ao entrar no ttyv0?" s && AUTOX=1
+echo
+info "Login:  1) tela de login gráfica (LightDM, com o tema Emilia)"
+info "        2) entrar no terminal (ttyv0) e o bspwm abre sozinho   3) manual (startx)"
+perguntar "Como entrar no bspwm" 1
+LOGIN=$RESPOSTA
+case $LOGIN in 1|2|3) ;; *) erro "opção de login inválida" ;; esac
+AUTOX=0; [ "$LOGIN" = 2 ] && AUTOX=1
 
 TERMINAL=0
 sim "Terminal estilo AurTTY (bash + oh-my-bash powerline + ble.sh + fzf-tab) como shell padrão?" s && TERMINAL=1
 
 echo
-info "Resumo: usuário=$USUARIO teclado=$TECLADO vídeo=$VIDEO auto-startx=$AUTOX terminal=$TERMINAL"
+info "Resumo: usuário=$USUARIO teclado=$TECLADO vídeo=$VIDEO login=$LOGIN terminal=$TERMINAL"
 sim "Continuar?" s || exit 0
 
 # ---------- pacotes ----------
@@ -238,14 +243,22 @@ export XDG_CURRENT_DESKTOP=bspwm
 exec dbus-launch --exit-with-session bspwm
 EOF
 
+# remove o bloco de startx de instalações anteriores (volta a ser escrito se LOGIN=2)
+for perfil in .profile .bash_profile; do
+  arq="$CASA/$perfil"
+  [ -f "$arq" ] || continue
+  awk '/^# freebsd-bspwm-aurtty: abre o bspwm ao entrar no ttyv0$/ {pula=1; next}
+       pula && /^fi$/ {pula=0; next}
+       !pula' "$arq" > "$arq.tmp" && mv "$arq.tmp" "$arq"
+done
+
 if [ $AUTOX -eq 1 ]; then
   for perfil in .profile .bash_profile; do
     [ "$perfil" = .bash_profile ] && [ ! -e "$CASA/$perfil" ] && continue
     arq="$CASA/$perfil"
     touch "$arq"
-    if ! grep -q 'freebsd-bspwm-aurtty' "$arq"; then
+    if ! grep -q 'abre o bspwm ao entrar no ttyv0' "$arq"; then
       cat >> "$arq" <<'EOF'
-
 # freebsd-bspwm-aurtty: abre o bspwm ao entrar no ttyv0
 if [ -z "${DISPLAY:-}" ] && [ "$(tty)" = /dev/ttyv0 ]; then
   exec startx
@@ -253,6 +266,75 @@ fi
 EOF
     fi
   done
+fi
+
+# ---------- tela de login (LightDM) ----------
+if [ "$LOGIN" = 1 ]; then
+  titulo "Tela de login: LightDM com o tema Emilia"
+  for p in lightdm lightdm-gtk-greeter; do
+    pkg install -q "$p" </dev/null >>"$LOG" 2>&1 || FALHARAM="$FALHARAM $p"
+  done
+
+  # sessão própria: o mesmo que o .xinitrc (dbus + bspwm)
+  cat > /usr/local/bin/aurtty-session <<'EOF'
+#!/bin/sh
+# freebsd-bspwm-aurtty: sessão bspwm aberta pela tela de login
+export LANG=${LANG:-pt_BR.UTF-8}
+export XDG_CURRENT_DESKTOP=bspwm
+exec dbus-launch --exit-with-session bspwm
+EOF
+  chmod 755 /usr/local/bin/aurtty-session
+  mkdir -p /usr/local/share/xsessions
+  cat > /usr/local/share/xsessions/bspwm-aurtty.desktop <<'EOF'
+[Desktop Entry]
+Name=bspwm (AurTTY)
+Comment=bspwm com o tema Emilia
+Exec=/usr/local/bin/aurtty-session
+Type=Application
+EOF
+
+  # fundo da tela de login: o wallpaper padrão em png (lido pelo usuário do lightdm)
+  mkdir -p /usr/local/share/backgrounds/aurtty
+  magick "$DOT/config/bspwm/rices/emilia/walls/aurtty-freebsd-dark.webp" \
+    /usr/local/share/backgrounds/aurtty/login.png
+  chmod 644 /usr/local/share/backgrounds/aurtty/login.png
+  install -m 644 "$RAIZ/extras/lightdm/avatar.png" /usr/local/share/backgrounds/aurtty/avatar.png
+
+  # tema só da tela de login: TokyoNight-zk + CSS do cartão, campos e botões
+  mkdir -p /usr/local/share/themes/AurTTY-Login/gtk-3.0
+  install -m 644 "$RAIZ/extras/lightdm/gtk.css" /usr/local/share/themes/AurTTY-Login/gtk-3.0/gtk.css
+
+  cat > /usr/local/etc/lightdm/lightdm-gtk-greeter.conf <<'EOF'
+# gerado pelo freebsd-bspwm-aurtty (tema Emilia / Tokyo Night)
+[greeter]
+background = /usr/local/share/backgrounds/aurtty/login.png
+user-background = false
+theme-name = AurTTY-Login
+icon-theme-name = TokyoNight-SE
+cursor-theme-name = Qogirr-Dark
+cursor-theme-size = 24
+font-name = JetBrainsMono Nerd Font 11
+xft-antialias = true
+xft-hintstyle = hintslight
+xft-rgba = rgb
+indicators = ~host;~spacer;~clock;~spacer;~session;~power
+clock-format = %a %d/%m  %H:%M
+position = 80%,center 50%,center
+hide-user-image = false
+default-user-image = /usr/local/share/backgrounds/aurtty/avatar.png
+EOF
+
+  mkdir -p /usr/local/etc/lightdm/lightdm.conf.d
+  cat > /usr/local/etc/lightdm/lightdm.conf.d/50-aurtty.conf <<'EOF'
+# gerado pelo freebsd-bspwm-aurtty
+[Seat:*]
+greeter-session = lightdm-gtk-greeter
+user-session = bspwm-aurtty
+EOF
+  sysrc -q lightdm_enable=YES >/dev/null
+  info "LightDM ativado (abre sozinho no boot)"
+else
+  sysrc -q lightdm_enable=NO >/dev/null 2>&1 || true
 fi
 
 # ---------- terminal ----------
@@ -299,7 +381,9 @@ titulo "Pronto"
 if [ "$VIDEO" = 3 ] || [ "$VIDEO" = 4 ]; then
   info "o driver de vídeo é carregado no boot: reinicie com 'reboot'"
 fi
-if [ $AUTOX -eq 1 ]; then
+if [ "$LOGIN" = 1 ]; then
+  info "reinicie com 'reboot' e a tela de login abre sozinha"
+elif [ $AUTOX -eq 1 ]; then
   info "entre como '$USUARIO' no ttyv0 e o bspwm abre sozinho"
 else
   info "entre como '$USUARIO' e rode: startx"

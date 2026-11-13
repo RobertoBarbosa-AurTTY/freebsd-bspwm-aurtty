@@ -24,7 +24,7 @@ O script pergunta:
 | Usuário (existente ou novo) | — |
 | Layout do teclado | `br` (ABNT2) |
 | Driver de vídeo: VM com BIOS (vesa), UEFI sem driver (scfb), Intel/AMD (drm-kmod), NVIDIA | detecta VM, BIOS ou UEFI |
-| Abrir o bspwm sozinho ao entrar no `ttyv0` | sim |
+| Como entrar: tela de login gráfica (LightDM), login no `ttyv0` abrindo o bspwm, ou manual (`startx`) | LightDM |
 | Terminal estilo AurTTY: bash + oh-my-bash (powerline) + ble.sh como shell padrão | sim |
 
 O log fica em `/var/log/freebsd-bspwm-aurtty.log`. As configs que já existiam em
@@ -36,6 +36,11 @@ O log fica em `/var/log/freebsd-bspwm-aurtty.log`. As configs que já existiam e
 - **Aparência:** tema GTK `TokyoNight-zk`, ícones `TokyoNight-SE`, cursor `Qogirr-Dark`,
   JetBrainsMono Nerd Font, FontAwesome, Material Design Icons, wallpapers do Emilia
 - **Sistema:** Xorg, dbus, pulseaudio, driver de vídeo escolhido
+- **Tela de login (opcional, padrão):** LightDM com tema próprio `AurTTY-Login` (`extras/lightdm/gtk.css`,
+  sobre o TokyoNight-zk): cartão translúcido arredondado, campos e botão no azul do Emilia,
+  avatar redondo com o diabinho do ArchBSD (`extras/lightdm/avatar.png`), wallpaper FreeBSD dark
+  e a sessão `bspwm (AurTTY)`. Config em
+  `/usr/local/etc/lightdm/lightdm-gtk-greeter.conf`.
 - **Terminal (opcional):** bash, oh-my-bash com tema powerline, ble.sh (realce e sugestões),
   eza (`ls`/`ll`/`lt` com ícones), zoxide e fzf (`Ctrl+R` histórico, `Ctrl+T` arquivos).
   **fzf-tab**: o `TAB` abre o fzf com pré-visualização (pastas com eza, arquivos com bat),
