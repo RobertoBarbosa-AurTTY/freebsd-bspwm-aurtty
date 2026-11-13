@@ -14,16 +14,16 @@ Tiradas numa VM (QEMU, 1920x1080, sem aceleração de vídeo) logo depois de rod
 **Tela de login** (LightDM com o tema `AurTTY-Login`)
 ![Tela de login](docs/screenshots/login.png)
 
-**Área de trabalho** (polybar `bar07`, wallpaper FreeBSD dark)
+**Área de trabalho** (polybar `bar07` em cima; embaixo, a dock com terminal, Chrome, VS Code e a IA local)
 ![Área de trabalho](docs/screenshots/desktop.png)
 
 **Menu de aplicativos** (`super+espaço`)
 ![Menu do rofi](docs/screenshots/menu.png)
 
-**Terminal** (alacritty + bash com oh-my-bash powerline, fastfetch e eza)
+**Terminal** (saudação do universo sorteada a cada terminal, com as informações do sistema ao lado)
 ![Terminal](docs/screenshots/terminal.png)
 
-**Desenvolvimento** (VS Code oficial via emulação Linux e as ferramentas de backend)
+**Desenvolvimento** (VS Code oficial via emulação Linux; os bancos do `devdb` rodando em jails e as ferramentas de backend)
 ![VS Code e ferramentas](docs/screenshots/apps.png)
 
 ## Instalação
