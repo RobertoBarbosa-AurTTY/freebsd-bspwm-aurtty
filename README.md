@@ -12,19 +12,19 @@ algumas perguntas e entra direto no bspwm.
 Tiradas numa VM (QEMU, 1920x1080, sem aceleração de vídeo) logo depois de rodar o instalador.
 
 **Tela de login** (LightDM com o tema `AurTTY-Login`)
-![Tela de login](docs/screenshots/login.png)
+![Tela de login](docs/screenshots/login-v2.png)
 
 **Área de trabalho** (polybar `bar07` em cima; embaixo, a dock com terminal, Chrome, VS Code e a IA local)
-![Área de trabalho](docs/screenshots/desktop.png)
+![Área de trabalho](docs/screenshots/desktop-v2.png)
 
 **Menu de aplicativos** (`super+espaço`)
-![Menu do rofi](docs/screenshots/menu.png)
+![Menu do rofi](docs/screenshots/menu-v2.png)
 
 **Terminal** (saudação do universo sorteada a cada terminal, com as informações do sistema ao lado)
-![Terminal](docs/screenshots/terminal.png)
+![Terminal](docs/screenshots/terminal-v2.png)
 
 **Desenvolvimento** (VS Code oficial via emulação Linux; os bancos do `devdb` rodando em jails e as ferramentas de backend)
-![VS Code e ferramentas](docs/screenshots/apps.png)
+![VS Code e ferramentas](docs/screenshots/apps-v2.png)
 
 ## Instalação
 
