@@ -1,0 +1,117 @@
+#!/bin/sh
+# devdb: bancos de dados de desenvolvimento em jails do FreeBSD (no lugar do Docker)
+# freebsd-bspwm-aurtty
+#
+# Cada banco roda numa jail própria (Bastille, jail "thin"), isolada do sistema,
+# mas usando a rede do computador: conecta em 127.0.0.1 na porta padrão.
+#
+#   devdb criar   <banco>    cria a jail, instala e inicia o banco
+#   devdb parar   <banco>    para a jail
+#   devdb iniciar <banco>    inicia de novo
+#   devdb apagar  <banco>    apaga a jail e todos os dados
+#   devdb shell   <banco>    abre um terminal dentro da jail
+#   devdb lista              jails de banco e o estado
+#
+# bancos: postgres · mysql · valkey (Redis) · mongo
+set -eu
+
+uso() { sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+cor() { printf '\033[%sm%s\033[0m\n' "$1" "$2"; }
+erro() { cor '1;31' "devdb: $*" >&2; exit 1; }
+
+[ $# -ge 1 ] || uso 1
+acao=$1; banco=${2:-}
+
+# precisa de root: pede a senha uma vez (o FreeBSD não vem com sudo)
+if [ "$(id -u)" -ne 0 ]; then
+    case $acao in -h|--help|ajuda) uso ;; esac
+    echo "devdb precisa de root (senha do root):"
+    exec su root -c "$0 $*"
+fi
+
+command -v bastille >/dev/null || erro "bastille não instalado (pkg install bastille)"
+LOG=/var/log/devdb.log
+# roda o bastille em silêncio; se falhar, mostra o fim do log
+b() {
+    echo ">> bastille $*" >>"$LOG"
+    bastille "$@" >>"$LOG" 2>&1 || { tail -15 "$LOG" >&2; erro "falhou: bastille $* (log: $LOG)"; }
+}
+REL=$(freebsd-version -u | sed 's/-p[0-9]*$//')
+J="devdb-$banco"
+
+porta() {
+    case $1 in
+        postgres) echo 5432 ;; mysql) echo 3306 ;; valkey) echo 6379 ;; mongo) echo 27017 ;;
+        *) erro "banco desconhecido: $1 (postgres, mysql, valkey ou mongo)" ;;
+    esac
+}
+
+existe() { [ -d "/usr/local/bastille/jails/$J" ]; }
+
+conexao() {
+    case $banco in
+        postgres) echo "postgresql://postgres@127.0.0.1:5432/postgres   (psql -h 127.0.0.1 -U postgres)" ;;
+        mysql)    echo "mysql://dev:dev@127.0.0.1:3306   (mariadb -h 127.0.0.1 -u dev -pdev)" ;;
+        valkey)   echo "redis://127.0.0.1:6379   (valkey-cli)" ;;
+        mongo)    echo "mongodb://127.0.0.1:27017" ;;
+    esac
+}
+
+criar() {
+    p=$(porta "$banco")
+    existe && { cor '1;33' "$J já existe"; conexao; return; }
+    if sockstat -4l -p "$p" 2>/dev/null | awk 'NR>1' | grep -q .; then
+        erro "a porta $p já está em uso neste computador"
+    fi
+    sysrc -q bastille_enable=YES >/dev/null
+    if [ ! -d "/usr/local/bastille/releases/$REL" ]; then
+        cor '1;34' "baixando o sistema base $REL para as jails (uma vez só)..."
+        b bootstrap "$REL"
+    fi
+    cor '1;34' "criando a jail $J..."
+    b create "$J" "$REL" inherit
+    # memória compartilhada do System V própria da jail (Postgres precisa)
+    for k in sysvshm sysvsem sysvmsg; do b config "$J" set "$k" new; done
+    b restart "$J"
+    cor '1;34' "instalando $banco..."
+    case $banco in
+        postgres)
+            b pkg "$J" install -y postgresql17-server
+            b sysrc "$J" postgresql_enable=YES
+            b service "$J" postgresql initdb
+            b service "$J" postgresql start ;;
+        mysql)
+            b pkg "$J" install -y mariadb114-server
+            b sysrc "$J" mysql_enable=YES
+            # só nesta máquina: sem isso o MariaDB escuta em todas as interfaces (rede local)
+            b sysrc "$J" mysql_args="--bind-address=127.0.0.1"
+            b service "$J" mysql-server start
+            sleep 3
+            # usuário dev/dev só local; o anônimo ''@localhost teria prioridade e negaria o acesso
+            b cmd "$J" mariadb -e "DROP USER IF EXISTS ''@'localhost'; DROP USER IF EXISTS ''@'$J'; CREATE USER IF NOT EXISTS 'dev'@'localhost' IDENTIFIED BY 'dev'; CREATE USER IF NOT EXISTS 'dev'@'127.0.0.1' IDENTIFIED BY 'dev'; GRANT ALL ON *.* TO 'dev'@'localhost' WITH GRANT OPTION; GRANT ALL ON *.* TO 'dev'@'127.0.0.1' WITH GRANT OPTION; FLUSH PRIVILEGES;" ;;
+        valkey)
+            b pkg "$J" install -y valkey
+            b sysrc "$J" valkey_enable=YES
+            b service "$J" valkey start ;;
+        mongo)
+            b pkg "$J" install -y mongodb70
+            b sysrc "$J" mongod_enable=YES
+            b service "$J" mongod start ;;
+    esac
+    cor '1;32' "pronto: $(conexao)"
+}
+
+case $acao in
+    criar)   [ -n "$banco" ] || uso 1; porta "$banco" >/dev/null; criar ;;
+    parar)   [ -n "$banco" ] || uso 1; existe || erro "$J não existe"; b stop "$J"; cor '1;32' "$J parada" ;;
+    iniciar) [ -n "$banco" ] || uso 1; existe || erro "$J não existe"; b start "$J"; cor '1;32' "$J rodando: $(conexao)" ;;
+    apagar)
+        [ -n "$banco" ] || uso 1; existe || erro "$J não existe"
+        printf 'apagar %s e TODOS os dados dele? (s/N) ' "$J"; read -r r
+        [ "$r" = s ] || exit 0
+        b destroy -a -y "$J"; cor '1;32' "$J apagada" ;;
+    shell)   [ -n "$banco" ] || uso 1; existe || erro "$J não existe"; exec bastille console "$J" ;;
+    lista)   bastille list 2>/dev/null | awk 'NR==1 || $2 ~ /^devdb-/' ;;
+    -h|--help|ajuda) uso ;;
+    *) uso 1 ;;
+esac

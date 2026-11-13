@@ -44,7 +44,8 @@ echo alacritty > "$B/config/.term"
 awk '
   /^export PATH=/ { print "export PATH=\"$HOME/.config/bspwm/freebsd-bin:$HOME/.config/bspwm/bin:$PATH\""; next }
   /eww/ || /lxpolkit/ { next }
-  /^run clipcatd/ { print; print "pulseaudio --check 2>/dev/null || pulseaudio --start --exit-idle-time=-1 &"; next }
+  # pulseaudio antes da barra: senão o módulo de volume da polybar sobe vazio
+  /^# Load current theme/ { print "# Start pulseaudio (before polybar, for the volume module)"; print "pulseaudio --check 2>/dev/null || pulseaudio --start --exit-idle-time=-1"; print ""; print; next }
   { print }
 ' "$B/bspwmrc" > "$B/bspwmrc.new" && mv "$B/bspwmrc.new" "$B/bspwmrc"
 chmod +x "$B/bspwmrc"
@@ -83,10 +84,21 @@ awk '
   { print }
 ' "$B/bars/bar07/modules.ini" > "$B/bars/bar07/modules.ini.new" && mv "$B/bars/bar07/modules.ini.new" "$B/bars/bar07/modules.ini"
 sed -i 's/^arch_icon=.*/arch_icon="#e8303a"   # logo ArchBSD/' "$B/rices/emilia/theme-config.bash"
+# terminal levemente transparente (o Theme.sh aplica no alacritty.toml)
+sed -i 's/^P_TERM_OPACITY=.*/P_TERM_OPACITY="0.8"\t# Terminal transparency. Range: 0.1 - 1.0 (1.0 = disabled)/' "$B/rices/emilia/theme-config.bash"
 
 # Wallpapers próprios (tools/gerar-wallpapers.py) no Emilia; o FreeBSD dark vira o padrão
 cp "$RAIZ"/extras/walls/*.webp "$B/rices/emilia/walls/"
 sed -i 's|^DEFAULT_WALL=.*|DEFAULT_WALL="$HOME/.config/bspwm/rices/emilia/walls/aurtty-freebsd-dark.webp"|' "$B/rices/emilia/theme-config.bash"
+
+
+# Dock flutuante embaixo (terminal, Chrome, VS Code, IA): sobe junto com a bar07
+cp "$RAIZ/extras/polybar/dock.ini" "$B/bars/dock.ini"
+cat >> "$B/bars/bar07/Bar.bash" <<'EOF'
+# freebsd-bspwm-aurtty: dock embaixo, só no monitor principal
+[ -f "$HOME/.config/bspwm/bars/dock.ini" ] && \
+	MONITOR=$(polybar --list-monitors | grep primary | cut -d":" -f1) polybar -q aurtty-dock -c "$HOME/.config/bspwm/bars/dock.ini" &
+EOF
 
 # Paleta opcional de fogo para a barra (desligada: a barra usa as cores do Emilia).
 # Para ativar: em bars/bar07/config.ini troque "include-file = ../colors.ini" por "include-file = fogo.ini"
@@ -112,6 +124,7 @@ chmod +x "$B/bin/Theme.sh"
 for d in alacritty dunst jgmenu clipcat gtk-3.0; do
   cp -a "$U/config/$d" "$DEST/config/$d"
 done
+sed -i 's/^opacity = .*/opacity = 0.8/' "$DEST/config/alacritty/alacritty.toml"
 cp -a "$U/home/.gtkrc-2.0" "$U/home/.icons" "$DEST/home/"
 
 # --- fontes usadas pela barra ---

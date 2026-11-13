@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Pré-visualização do fzf-tab (TAB): pastas com eza, textos com bat, binários com file
-# (mesmo estilo do fzf-tab do zsh nos dotfiles do gh0stzk)
+# (no estilo do fzf-tab do zsh)
 p="${1//\\/}"                       # tira escapes do bash (ex: "Minha\ Pasta/")
 [[ $p == "~"* ]] && p="$HOME${p:1}"
 

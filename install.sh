@@ -1,6 +1,6 @@
 #!/bin/sh
-# freebsd-bspwm-aurtty: pós-instalação do FreeBSD com bspwm e o tema Emilia
-# (dotfiles do gh0stzk, https://github.com/gh0stzk/dotfiles, GPL-3.0).
+# freebsd-bspwm-aurtty: pós-instalação do FreeBSD para desenvolvimento, com bspwm.
+# Visual baseado no tema Emilia (créditos e licença no README; GPL-3.0).
 #
 # Uso, como root, num FreeBSD recém-instalado:
 #   pkg install -y git && git clone https://github.com/RobertoBarbosa-AurTTY/freebsd-bspwm-aurtty
@@ -24,16 +24,19 @@ BLE_URL=https://github.com/akinomyoga/ble.sh/releases/download/v0.4.0-devel3/ble
 BLE_SHA=c8612ee612bc6b10dbfd6e85c6cbdfd7caf152a12d1f9de22ea0a9d735b3080c
 FZFTAB_URL=https://codeload.github.com/lincheney/fzf-tab-completion/tar.gz/7014e0a7cd68fe3530e2f58c45740d17e98f05b8
 FZFTAB_SHA=eec482c89e536884c5101d20944905e93d864b2c22404d01381d4e80f9cbf718
+# chaveiro oficial do Debian: o debootstrap do FreeBSD não traz e baixaria sem checar assinatura
+DEBKEY_URL=https://deb.debian.org/debian/pool/main/d/debian-archive-keyring/debian-archive-keyring_2025.1_all.deb
+DEBKEY_SHA=9ea7778e443144ca490668737a8ab22dd3e748bb99e805e22ec055abeb3c7fac
 
 PACOTES="xorg bspwm sxhkd polybar picom rofi dunst alacritty feh xsettingsd jgmenu clipcat
 xdo xdotool jq ImageMagick7 maim xclip pamixer playerctl pavucontrol pulseaudio
 i3lock-color webp webp-pixbuf-loader bash gsed coreutils git curl dbus jetbrains-mono noto-basic
-papirus-icon-theme eza zoxide fzf bat gawk gnugrep fastfetch"
+papirus-icon-theme eza zoxide fzf bat gawk gnugrep fastfetch python3"
 
 # ferramentas de desenvolvimento backend (opcional). Os py3xx-* entram depois,
 # com a versão do python padrão do repositório. Sem Docker no FreeBSD.
 DEV_PKGS="neovim lazygit ripgrep fd-find tmux gh mise uv go-yq xh python3 node22 npm-node22 deno
-sqlite3 postgresql17-client mariadb114-client valkey hs-ShellCheck"
+sqlite3 postgresql17-client mariadb114-client valkey hs-ShellCheck bastille"
 DEV_PY="httpie pgcli pre-commit"
 
 # IA local: GGUF oficiais do Qwen3 no Hugging Face (arquivo e sha256 fixados)
@@ -73,8 +76,8 @@ baixar_verificado() { # url sha256 destino
 cat <<'EOF'
 
   ┌──────────────────────────────────────────────┐
-  │  freebsd-bspwm-aurtty · bspwm + tema Emilia  │
-  │  dotfiles originais: gh0stzk (GPL-3.0)       │
+  │  freebsd-bspwm-aurtty                        │
+  │  ambiente de desenvolvimento com bspwm       │
   └──────────────────────────────────────────────┘
 EOF
 
@@ -139,7 +142,7 @@ fi
 
 # IA local: sugere o modelo pela RAM desta máquina
 IA=0
-RAM_GB=$(( $(sysctl -n hw.physmem) / 1073741824 ))
+RAM_GB=$(( ($(sysctl -n hw.physmem) + 536870912) / 1073741824 ))   # arredonda: 3,96 GB -> 4
 if   [ "$RAM_GB" -lt 7 ];  then SUG_IA=1
 elif [ "$RAM_GB" -lt 15 ]; then SUG_IA=2
 else SUG_IA=3; fi
@@ -282,6 +285,17 @@ for f in .gtkrc-2.0 .icons; do
 done
 [ -d "$BACKUP" ] && info "configs anteriores salvas em $BACKUP"
 
+# dock embaixo: só os ícones do que foi instalado, largura de 62 px por ícone
+DOCK="$CASA/.config/bspwm/bars/dock.ini"
+if [ -f "$DOCK" ]; then
+  mods="dock-term"
+  [ $LINUXAPPS -eq 1 ] && mods="$mods dock-chrome dock-code"
+  [ "$IA" != 0 ] && mods="$mods dock-ia"
+  larg=$(( $(echo $mods | wc -w) * 62 ))
+  sed -i '' -e "s/^modules-center = .*/modules-center = $mods/" -e "s/^width = .*/width = $larg/" \
+    -e "s/^offset-x = .*/offset-x = 50%:-$(( larg / 2 ))/" "$DOCK"
+fi
+
 cat > "$CASA/.xinitrc" <<'EOF'
 #!/bin/sh
 # gerado pelo freebsd-bspwm-aurtty
@@ -414,6 +428,9 @@ if [ $TERMINAL -eq 1 ]; then
     tar -xf "$TMP/ble.tar.xz" -C "$casa/.local/share/blesh" --strip-components 1
     tar -xf "$TMP/fzftab.tar.gz" -C "$casa/.local/share/fzf-tab-completion" --strip-components 1
     install -m 755 "$RAIZ/extras/bash/fzf-tab-preview" "$casa/.local/bin/fzf-tab-preview"
+    # saudação com figuras do universo (Andrômeda, Pilares da Criação, TON 618)
+    rm -rf "$casa/.local/share/universo"
+    cp -R "$RAIZ/extras/bash/universo" "$casa/.local/share/universo"
     if [ -e "$casa/.bashrc" ] && ! grep -q 'freebsd-bspwm-aurtty' "$casa/.bashrc"; then
       mkdir -p "$BACKUP"; mv "$casa/.bashrc" "$BACKUP/bashrc-$dono"
     fi
@@ -441,6 +458,21 @@ EOF2
   info "shell padrão de $USUARIO: /usr/local/bin/bash"
 fi
 
+# ---------- atualizar: atualização com "desfazer" (boot environment do ZFS) ----------
+install -m 755 "$RAIZ/extras/bin/atualizar" /usr/local/bin/atualizar
+if [ "$(mount -p | awk '$2 == "/" {print $3}')" = zfs ]; then
+  info "atualizar: tira uma cópia do sistema antes de atualizar (atualizar --voltar desfaz)"
+else
+  info "atualizar: sistema em UFS, atualiza sem cópia (o desfazer precisa de ZFS)"
+fi
+
+# ---------- devdb: bancos de desenvolvimento em jails ----------
+if [ $DEV -eq 1 ]; then
+  install -m 755 "$RAIZ/extras/bin/devdb" /usr/local/bin/devdb
+  sysrc -q bastille_enable=YES >/dev/null     # as jails dos bancos voltam sozinhas no boot
+  info "devdb: 'devdb criar postgres' (ou mysql, valkey, mongo) sobe o banco numa jail"
+fi
+
 # ---------- Chrome e VS Code (Debian na emulação Linux) ----------
 # O FreeBSD procura binários Linux primeiro em /compat/linux, então um Debian
 # instalado ali roda direto pelo usuário, sem chroot. /tmp (socket do X) e
@@ -449,10 +481,17 @@ if [ $LINUXAPPS -eq 1 ]; then
   titulo "Chrome e VS Code: Debian 13 em /compat/linux"
   sysrc -q linux_enable=YES >/dev/null
   kldload -n linux64
-  pkg install -q debootstrap </dev/null >>"$LOG" 2>&1 || FALHARAM="$FALHARAM debootstrap"
+  for p in debootstrap gnupg; do                 # gnupg: gpgv confere a assinatura do Debian
+    pkg install -q "$p" </dev/null >>"$LOG" 2>&1 || FALHARAM="$FALHARAM $p"
+  done
   if [ ! -f /compat/linux/etc/debian_version ]; then
     info "baixando o Debian base (alguns minutos)"
-    debootstrap --arch=amd64 trixie /compat/linux http://deb.debian.org/debian >>"$LOG" 2>&1 \
+    baixar_verificado "$DEBKEY_URL" "$DEBKEY_SHA" "$TMP/debkey.deb"
+    (cd "$TMP" && tar -xf debkey.deb data.tar.xz && tar -xf data.tar.xz ./usr/share/keyrings)
+    # o debootstrap verifica com o gpgv, mas antes exige achar um "gpgv2" no PATH
+    mkdir -p "$TMP/bin" && ln -sf /usr/local/bin/gpgv "$TMP/bin/gpgv2"
+    PATH="$TMP/bin:$PATH" debootstrap --keyring="$TMP/usr/share/keyrings/debian-archive-keyring.pgp" \
+      --arch=amd64 trixie /compat/linux http://deb.debian.org/debian >>"$LOG" 2>&1 \
       || cor '1;31' "    debootstrap falhou (veja $LOG)"
   fi
   service linux start >>"$LOG" 2>&1 || true

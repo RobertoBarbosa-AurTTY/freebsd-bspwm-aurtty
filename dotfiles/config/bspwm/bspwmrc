@@ -66,6 +66,9 @@ run() {
 # Launch sxhkd daemon
 run sxhkd -c "${HOME}"/.config/bspwm/config/sxhkdrc
 
+# Start pulseaudio (before polybar, for the volume module)
+pulseaudio --check 2>/dev/null || pulseaudio --start --exit-idle-time=-1
+
 # Load current theme
 "${HOME}"/.config/bspwm/bin/Theme.sh
 
@@ -78,7 +81,6 @@ run xsettingsd --config="${HOME}"/.config/bspwm/config/xsettingsd >/dev/null 2>&
 
 # Launch clipboard daemon
 run clipcatd
-pulseaudio --check 2>/dev/null || pulseaudio --start --exit-idle-time=-1 &
 
 # Launch polkit
 

@@ -1,0 +1,68 @@
+#!/bin/sh
+# atualizar: atualiza o FreeBSD e os pacotes com "desfazer"
+# freebsd-bspwm-aurtty
+#
+# Com o sistema em ZFS, tira antes uma cópia do sistema inteiro (boot environment).
+# Se a atualização quebrar algo, volte para a cópia:
+#   no menu do boot: opção 8 (Boot Environments) e escolha "antes-<data>", ou
+#   atualizar --voltar           (ativa a cópia mais recente e pede reboot)
+#   atualizar --lista            (mostra as cópias)
+# Guarda as 5 cópias mais recentes. Sem ZFS, atualiza sem a cópia (avisa antes).
+set -eu
+
+MANTER=5
+cor() { printf '\033[%sm%s\033[0m\n' "$1" "$2"; }
+
+if [ "$(id -u)" -ne 0 ]; then
+    echo "atualizar precisa de root (senha do root):"
+    exec su root -c "$0 $*"
+fi
+
+zfs_raiz() {
+    [ "$(mount -p | awk '$2 == "/" {print $3}')" = zfs ] && command -v bectl >/dev/null
+}
+
+copias() { bectl list -H 2>/dev/null | awk '$1 ~ /^antes-/ {print $1}' | sort; }
+
+case ${1:-} in
+    --lista)
+        zfs_raiz || { echo "sem ZFS: não há cópias"; exit 0; }
+        bectl list; exit 0 ;;
+    --voltar)
+        zfs_raiz || { cor '1;31' "sem ZFS: não há cópia para voltar"; exit 1; }
+        ultima=$(copias | tail -1)
+        [ -n "$ultima" ] || { cor '1;31' "nenhuma cópia antes-* encontrada"; exit 1; }
+        bectl activate "$ultima"
+        cor '1;32' "o próximo boot usa '$ultima'. Reinicie com: reboot"
+        exit 0 ;;
+    -h|--help)
+        sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+esac
+
+if zfs_raiz; then
+    be="antes-$(date +%Y%m%d-%H%M%S)"
+    bectl create "$be"
+    cor '1;32' "cópia do sistema criada: $be  (para voltar: atualizar --voltar)"
+    # guarda só as $MANTER mais recentes
+    n=$(copias | wc -l)
+    if [ "$n" -gt "$MANTER" ]; then
+        copias | head -n $((n - MANTER)) | while read -r velha; do
+            bectl destroy -o "$velha" && echo "cópia antiga removida: $velha"
+        done
+    fi
+else
+    cor '1;33' "aviso: o sistema não está em ZFS, então não dá para tirar a cópia antes."
+    printf 'atualizar mesmo assim? (s/N) '; read -r r
+    [ "$r" = s ] || exit 0
+fi
+
+# sistema base: freebsd-update (instalação clássica) ou pkg (pkgbase)
+if pkg info -e FreeBSD-runtime 2>/dev/null; then
+    cor '1;34' "sistema base via pkg (pkgbase): atualizado junto com os pacotes"
+else
+    cor '1;34' "atualizando o sistema base (freebsd-update)..."
+    PAGER=cat freebsd-update --not-running-from-cron fetch install || true
+fi
+cor '1;34' "atualizando os pacotes..."
+pkg upgrade -y
+cor '1;32' "pronto. Se algo mudou no kernel, reinicie com: reboot"

@@ -106,6 +106,9 @@ rr() {
   exec bash
 }
 
+# saudação: figura do universo sorteada a cada terminal (FIGURA=0 desliga)
+[ -f ~/.local/share/universo/greeting.bash ] && source ~/.local/share/universo/greeting.bash
+
 if [[ ${BLE_VERSION-} ]]; then
   ble-face -s auto_complete fg=244
   ble-face -s syntax_error fg=red
