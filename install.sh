@@ -31,7 +31,7 @@ DEBKEY_SHA=9ea7778e443144ca490668737a8ab22dd3e748bb99e805e22ec055abeb3c7fac
 PACOTES="xorg bspwm sxhkd polybar picom rofi dunst alacritty feh xsettingsd jgmenu clipcat
 xdo xdotool jq ImageMagick7 maim xclip pamixer playerctl pavucontrol pulseaudio
 i3lock-color webp webp-pixbuf-loader bash gsed coreutils git curl dbus jetbrains-mono noto-basic
-papirus-icon-theme eza zoxide fzf bat gawk gnugrep fastfetch python3"
+papirus-icon-theme eza zoxide fzf bat gawk gnugrep fastfetch python3 plank dconf"
 
 # ferramentas de desenvolvimento backend (opcional). Os py3xx-* entram depois,
 # com a versão do python padrão do repositório. Sem Docker no FreeBSD.
@@ -285,16 +285,12 @@ for f in .gtkrc-2.0 .icons; do
 done
 [ -d "$BACKUP" ] && info "configs anteriores salvas em $BACKUP"
 
-# dock embaixo: só os ícones do que foi instalado, largura de 62 px por ícone
-DOCK="$CASA/.config/bspwm/bars/dock.ini"
-if [ -f "$DOCK" ]; then
-  mods="dock-term"
-  [ $LINUXAPPS -eq 1 ] && mods="$mods dock-chrome dock-code"
-  [ "$IA" != 0 ] && mods="$mods dock-ia"
-  larg=$(( $(echo $mods | wc -w) * 62 ))
-  sed -i '' -e "s/^modules-center = .*/modules-center = $mods/" -e "s/^width = .*/width = $larg/" \
-    -e "s/^offset-x = .*/offset-x = 50%:-$(( larg / 2 ))/" "$DOCK"
-fi
+# dock embaixo (Plank, ícones reais e sem fundo; super+d mostra/esconde). O aurtty-dock
+# mostra só os programas instalados (terminal, Chrome, VS Code, IA local).
+install -m 755 "$RAIZ/extras/dock/aurtty-dock" /usr/local/bin/aurtty-dock
+mkdir -p /usr/local/share/icons/hicolor/scalable/apps
+install -m 644 "$RAIZ/extras/dock/aurtty-ia.svg" /usr/local/share/icons/hicolor/scalable/apps/aurtty-ia.svg
+gtk-update-icon-cache -f /usr/local/share/icons/hicolor >>"$LOG" 2>&1 || true
 
 cat > "$CASA/.xinitrc" <<'EOF'
 #!/bin/sh
@@ -593,6 +589,7 @@ clients:
   - name: local
 EOF
   chown -R "$USUARIO:$GRUPO" "$CASA/.config/aichat"
+  install -m 644 "$RAIZ/extras/dock/aurtty-ia.desktop" /usr/local/share/applications/aurtty-ia.desktop
   info "IA: 'aichat' no terminal ou http://127.0.0.1:8080 no navegador (log em /var/log/llama-server.log)"
 fi
 

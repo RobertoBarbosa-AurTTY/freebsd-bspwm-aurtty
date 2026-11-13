@@ -14,17 +14,17 @@ Tiradas numa VM (QEMU, 1920x1080, sem aceleração de vídeo) logo depois de rod
 **Tela de login** (LightDM com o tema `AurTTY-Login`)
 ![Tela de login](docs/screenshots/login-v2.png)
 
-**Área de trabalho** (polybar `bar07` em cima; embaixo, a dock com terminal, Chrome, VS Code e a IA local)
-![Área de trabalho](docs/screenshots/desktop-v2.png)
+**Área de trabalho** (polybar `bar07` em cima; embaixo, a dock com os ícones reais e sem fundo, `super+d` esconde)
+![Área de trabalho](docs/screenshots/desktop-v3.png)
 
 **Menu de aplicativos** (`super+espaço`)
-![Menu do rofi](docs/screenshots/menu-v2.png)
+![Menu do rofi](docs/screenshots/menu-v3.png)
 
 **Terminal** (saudação do universo sorteada a cada terminal, com as informações do sistema ao lado)
-![Terminal](docs/screenshots/terminal-v2.png)
+![Terminal](docs/screenshots/terminal-v3.png)
 
 **Desenvolvimento** (VS Code oficial via emulação Linux; os bancos do `devdb` rodando em jails e as ferramentas de backend)
-![VS Code e ferramentas](docs/screenshots/apps-v2.png)
+![VS Code e ferramentas](docs/screenshots/apps-v3.png)
 
 ## Instalação
 
@@ -98,8 +98,9 @@ O log fica em `/var/log/freebsd-bspwm-aurtty.log`. As configs que já existiam e
   e `reboot` voltam tudo como estava (ou escolha a cópia `antes-<data>` no menu do boot, opção 8).
   Guarda as 5 cópias mais recentes. Em UFS atualiza sem cópia, avisando antes. Para ter o
   desfazer, escolha ZFS na instalação do FreeBSD.
-- **Dock (embaixo):** atalhos rápidos para o terminal, Chrome, VS Code e a IA local (abre o
-  `aichat`). Só aparecem os ícones do que foi instalado (`~/.config/bspwm/bars/dock.ini`).
+- **Dock (embaixo):** os ícones reais do terminal, Chrome, VS Code e da IA local (abre o
+  `aichat`), sem fundo, crescendo ao passar o mouse (Plank). Só aparecem os programas
+  instalados. **`super+d`** mostra/esconde a dock, e a escolha fica guardada.
 - **Chrome e VS Code (opcional):** um Debian 13 (trixie) é instalado com `debootstrap` em
   `/compat/linux`, a pasta onde a emulação Linux do FreeBSD procura bibliotecas. O Chrome
   (`google-chrome-stable`) e o VS Code (`code`) vêm dos repositórios oficiais do Google e da

@@ -92,12 +92,17 @@ cp "$RAIZ"/extras/walls/*.webp "$B/rices/emilia/walls/"
 sed -i 's|^DEFAULT_WALL=.*|DEFAULT_WALL="$HOME/.config/bspwm/rices/emilia/walls/aurtty-freebsd-dark.webp"|' "$B/rices/emilia/theme-config.bash"
 
 
-# Dock flutuante embaixo (terminal, Chrome, VS Code, IA): sobe junto com a bar07
-cp "$RAIZ/extras/polybar/dock.ini" "$B/bars/dock.ini"
+# Dock embaixo com os ícones reais (Plank, sem fundo): sobe junto com a bar07.
+# O aurtty-dock (extras/dock, instalado em /usr/local/bin) respeita se o usuário escondeu.
 cat >> "$B/bars/bar07/Bar.bash" <<'EOF'
-# freebsd-bspwm-aurtty: dock embaixo, só no monitor principal
-[ -f "$HOME/.config/bspwm/bars/dock.ini" ] && \
-	MONITOR=$(polybar --list-monitors | grep primary | cut -d":" -f1) polybar -q aurtty-dock -c "$HOME/.config/bspwm/bars/dock.ini" &
+# freebsd-bspwm-aurtty: dock embaixo (super+d mostra/esconde)
+command -v aurtty-dock >/dev/null && aurtty-dock iniciar
+EOF
+cat >> "$B/config/sxhkdrc" <<'EOF'
+
+# Dock: mostra/esconde (freebsd-bspwm-aurtty)
+super + d
+	aurtty-dock alternar
 EOF
 
 # Paleta opcional de fogo para a barra (desligada: a barra usa as cores do Emilia).

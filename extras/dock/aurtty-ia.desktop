@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=IA local
+Comment=Conversar com a IA local (llama.cpp) no terminal
+Exec=alacritty --class AurttyIA,AurttyIA -e aichat
+Icon=aurtty-ia
+Type=Application
+Categories=Utility;
