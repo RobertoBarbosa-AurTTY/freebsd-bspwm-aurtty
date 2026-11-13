@@ -1,0 +1,90 @@
+#!/bin/sh
+# =============================================================
+#  ██████╗ ███████╗██████╗ ██╗    ██╗███╗   ███╗██████╗  ██████╗
+#  ██╔══██╗██╔════╝██╔══██╗██║    ██║████╗ ████║██╔══██╗██╔════╝
+#  ██████╔╝███████╗██████╔╝██║ █╗ ██║██╔████╔██║██████╔╝██║
+#  ██╔══██╗╚════██║██╔═══╝ ██║███╗██║██║╚██╔╝██║██╔══██╗██║
+#  ██████╔╝███████║██║     ╚███╔███╔╝██║ ╚═╝ ██║██║  ██║╚██████╗
+#  ╚═════╝ ╚══════╝╚═╝      ╚══╝╚══╝ ╚═╝     ╚═╝╚═╝  ╚═╝ ╚═════╝
+# Author:  gh0stzk
+# Repo:    https://github.com/gh0stzk/dotfiles
+# Date:    24.04.2025 20:37:31
+# Copyright (C) 2021-2026 gh0stzk <z0mbi3.zk@protonmail.com>
+# =============================================================
+
+# Set environment variables
+export PATH="$HOME/.config/bspwm/freebsd-bin:$HOME/.config/bspwm/bin:$PATH"
+export XDG_CURRENT_DESKTOP='bspwm'
+## Fix java applications
+export _JAVA_AWT_WM_NONREPARENTING=1
+
+#  ╦ ╦╔═╗╦═╗╦╔═╔═╗╔═╗╔═╗╔═╗╔═╗╔═╗
+#  ║║║║ ║╠╦╝╠╩╗╚═╗╠═╝╠═╣║  ║╣ ╚═╗
+#  ╚╩╝╚═╝╩╚═╩ ╩╚═╝╩  ╩ ╩╚═╝╚═╝╚═╝
+
+bspc config remove_disabled_monitors true
+bspc config remove_unplugged_monitors true
+bspc config merge_overlapping_monitors true
+MonitorSetup
+
+#  ╔╗ ╔═╗╔═╗╦ ╦╔╦╗  ╔═╗╔═╗╔╗╔╔═╗╦╔═╗
+#  ╠╩╗╚═╗╠═╝║║║║║║  ║  ║ ║║║║╠╣ ║║ ╦
+#  ╚═╝╚═╝╩  ╚╩╝╩ ╩  ╚═╝╚═╝╝╚╝╚  ╩╚═╝
+
+bspc config external_rules_command "${HOME}"/.config/bspwm/bin/ExternalRules
+
+bspc config window_gap                5
+bspc config split_ratio               0.51
+bspc config single_monocle            true
+
+bspc config automatic_scheme          longest_side
+bspc config initial_polarity          second_child
+bspc config removal_adjustment        true
+
+bspc config focus_follows_pointer     true
+bspc config pointer_follows_focus     false
+bspc config pointer_follows_monitor   true
+bspc config pointer_motion_interval   7
+bspc config pointer_modifier          mod4
+bspc config pointer_action1           move
+bspc config pointer_action2           resize_side
+bspc config pointer_action3           resize_corner
+
+#  ╔═╗╦ ╦╔╦╗╔═╗╔═╗╔╦╗╔═╗╦═╗╔╦╗
+#  ╠═╣║ ║ ║ ║ ║╚═╗ ║ ╠═╣╠╦╝ ║
+#  ╩ ╩╚═╝ ╩ ╚═╝╚═╝ ╩ ╩ ╩╩╚═ ╩
+
+run() {
+  if ! pidof -q "$1"; then
+    "$@" &
+  fi
+}
+
+# Set system vars for polybar
+"$HOME"/.config/bspwm/bin/SetSysVars
+
+# Launch sxhkd daemon
+run sxhkd -c "${HOME}"/.config/bspwm/config/sxhkdrc
+
+# Load current theme
+"${HOME}"/.config/bspwm/bin/Theme.sh
+
+# Launch picom
+run picom --config "${HOME}"/.config/bspwm/config/picom/picom.conf
+
+# Launch xsettingsd
+run xsettingsd --config="${HOME}"/.config/bspwm/config/xsettingsd >/dev/null 2>&1
+
+
+# Launch clipboard daemon
+run clipcatd
+pulseaudio --check 2>/dev/null || pulseaudio --start --exit-idle-time=-1 &
+
+# Launch polkit
+
+# The event to make Layouts work with polybar
+bspc subscribe desktop_focus monitor_focus | while read -r _; do
+    polybar-msg action "#layout.hook.0" >/dev/null 2>&1
+done &
+
+# Start one time message

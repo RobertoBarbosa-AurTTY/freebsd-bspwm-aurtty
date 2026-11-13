@@ -1,0 +1,3 @@
+#!/bin/sh
+# GNU shuf (pacote coreutils/gsed): os scripts do gh0stzk usam a sintaxe GNU
+exec /usr/local/bin/gshuf "$@"

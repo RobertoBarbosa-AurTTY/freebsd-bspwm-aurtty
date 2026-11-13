@@ -1,0 +1,3 @@
+#!/bin/sh
+# GNU date (pacote coreutils/gsed): os scripts do gh0stzk usam a sintaxe GNU
+exec /usr/local/bin/gdate "$@"

@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Pré-visualização do fzf-tab (TAB): pastas com eza, textos com bat, binários com file
+# (mesmo estilo do fzf-tab do zsh nos dotfiles do gh0stzk)
+p="${1//\\/}"                       # tira escapes do bash (ex: "Minha\ Pasta/")
+[[ $p == "~"* ]] && p="$HOME${p:1}"
+
+if [[ -d $p ]]; then
+  eza -1 --icons=always --color=always -a --group-directories-first "$p"
+elif [[ -f $p ]]; then
+  if file --mime-encoding -b "$p" 2>/dev/null | grep -q binary; then
+    file -b "$p"
+  else
+    bat --color=always --style=plain --theme=base16 --line-range=:200 "$p"
+  fi
+fi

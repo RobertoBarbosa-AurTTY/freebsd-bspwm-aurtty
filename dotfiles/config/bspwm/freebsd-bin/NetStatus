@@ -1,0 +1,19 @@
+#!/bin/sh
+# Polybar: velocidade de rede da interface padrão (substitui internal/network,
+# que o polybar do FreeBSD não tem). Mostra "Offline" sem rota padrão.
+iface=$(route -n get default 2>/dev/null | awk '/interface:/ {print $2}')
+[ -n "$iface" ] || { echo Offline; exit 0; }
+estado="${TMPDIR:-/tmp}/netstatus-$(id -u)"
+agora=$(date +%s)
+bytes=$(netstat -I "$iface" -bn | awk '$3 ~ /^<Link/ { print $8 + $11; exit }')
+if [ -f "$estado" ]; then
+  read -r t0 b0 < "$estado"
+else
+  t0=$agora b0=$bytes
+fi
+echo "$agora $bytes" > "$estado"
+dt=$((agora - t0)); [ "$dt" -gt 0 ] || dt=1
+echo "$(( (bytes - b0) / dt ))" | awk '{
+  v=$1; split("B K M G", u, " "); i=1
+  while (v >= 1024 && i < 4) { v /= 1024; i++ }
+  printf (i==1 ? "%d %s\n" : "%.1f %s\n"), v, u[i] }'

@@ -1,0 +1,3 @@
+#!/bin/sh
+# tac do GNU: no FreeBSD o equivalente é "tail -r"
+exec tail -r "$@"

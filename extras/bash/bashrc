@@ -1,0 +1,109 @@
+# ~/.bashrc gerado pelo freebsd-bspwm-aurtty
+# bash + oh-my-bash (tema powerline) + ble.sh (realce e sugestões enquanto digita)
+
+case $- in
+  *i*) ;;
+    *) return;;
+esac
+
+export PATH="$HOME/.local/bin:$PATH"
+export LANG=${LANG:-pt_BR.UTF-8}
+
+# FreeBSD: o fzf-tab e outros scripts usam o "tac" do GNU; aqui o equivalente é "tail -r"
+command -v tac >/dev/null || tac() { tail -r "$@"; }
+
+# ble.sh carrega primeiro e só "conecta" no fim do arquivo
+[ -f ~/.local/share/blesh/ble.sh ] && source ~/.local/share/blesh/ble.sh --noattach
+
+# --- oh-my-bash ---
+export OSH="$HOME/.oh-my-bash"
+OSH_THEME="powerline"
+completions=(git ssh)
+aliases=(general ls)
+plugins=(git sudo colored-man-pages)
+source "$OSH"/oh-my-bash.sh
+
+# primeiro segmento do prompt: só o nome da máquina
+prompt_context() {
+  prompt_segment black default '\h'
+}
+
+# segmentos do powerline em negrito e com texto branco por padrão
+if [[ ${OSH_THEME-} == powerline ]] && declare -F __powerline_left_segment >/dev/null; then
+  __powerline_left_segment() {
+    local OLD_IFS="${IFS}"; IFS="|"
+    local params=( $1 )
+    IFS="${OLD_IFS}"
+    local separator=""
+    if [[ "${SEGMENTS_AT_LEFT}" -gt 0 ]]; then
+      separator="$(set_color ${LAST_SEGMENT_COLOR} ${params[1]})${POWERLINE_LEFT_SEPARATOR}${_omb_prompt_normal}"
+    fi
+    LEFT_PROMPT+="${separator}$(set_color $([[ ${params[2]:--} == - ]] && echo 231 || echo "${params[2]}") ${params[1]})\[\e[1m\] ${params[0]} ${_omb_prompt_normal}"
+    LAST_SEGMENT_COLOR=${params[1]}
+    (( SEGMENTS_AT_LEFT += 1 ))
+  }
+fi
+
+# --- histórico ---
+HISTSIZE=100000
+HISTFILESIZE=200000
+HISTCONTROL=ignoreboth:erasedups
+HISTIGNORE="ls:ll:la:cd:pwd:exit:clear:history"
+HISTTIMEFORMAT="%d/%m/%Y %H:%M  "
+shopt -s histappend cmdhist
+PROMPT_COMMAND="history -a${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
+
+# --- ferramentas ---
+if command -v eza >/dev/null; then
+  alias ls='eza --icons=always --color=always --group-directories-first'
+  alias la='eza --icons=always --color=always --group-directories-first -a'
+  alias ll='eza --icons=always --color=always --group-directories-first -lah --git'
+  alias lt='eza --icons=always --color=always --tree --level=2 --git-ignore'
+fi
+command -v zoxide >/dev/null && eval "$(zoxide init bash)"
+if command -v fzf >/dev/null; then
+  if [[ ${BLE_VERSION-} ]]; then
+    # o pacote fzf do FreeBSD não instala shell/key-bindings.bash, que o ble.sh procura;
+    # gera a partir do próprio fzf (fzf --bash) numa pasta do usuário
+    _ble_contrib_fzf_base="$HOME/.local/share/fzf"
+    if [[ ! -s $_ble_contrib_fzf_base/shell/key-bindings.bash ]]; then
+      command mkdir -p "$_ble_contrib_fzf_base/shell"
+      fzf --bash > "$_ble_contrib_fzf_base/shell/key-bindings.bash"
+      : > "$_ble_contrib_fzf_base/shell/completion.bash"
+    fi
+    ble-import -d integration/fzf-key-bindings
+  else
+    eval "$(fzf --bash)"
+  fi
+fi
+
+# --- fzf-tab: TAB abre o fzf com pré-visualização (fzf-tab-completion) ---
+if command -v fzf >/dev/null && [ -f ~/.local/share/fzf-tab-completion/bash/fzf-bash-completion.sh ]; then
+  export FZF_COMPLETION_OPTS="--style=full --pointer '>' --gutter ' ' \
+    --color 'pointer:green:bold,bg+:-1:,fg+:green:bold,info:blue:bold,marker:yellow:bold,hl:gray:bold,hl+:gray:bold' \
+    --input-label ' Search ' --color 'input-border:blue,input-label:blue:bold' \
+    --list-label ' Results ' --color 'list-border:green,list-label:green:bold' \
+    --preview-label ' Preview ' --color 'preview-border:magenta,preview-label:magenta:bold' \
+    --preview 'fzf-tab-preview {1}' --preview-window 'right,50%' \
+    --bind 'space:accept'"
+  export FZF_TMUX_HEIGHT="90%"
+  export FZF_TAB_COMPLETION_PROMPT="> "
+  source ~/.local/share/fzf-tab-completion/bash/fzf-bash-completion.sh
+  bind -x '"\t": fzf_bash_completion'
+fi
+
+alias ..='cd ..'
+alias grep='grep --color=auto'
+
+# rr: reinicia o terminal limpo (no lugar de "source ~/.bashrc")
+rr() {
+  history -a
+  printf '\e[r\e[0m\e[H\e[2J\e[3J'
+  exec bash
+}
+
+if [[ ${BLE_VERSION-} ]]; then
+  ble-face -s auto_complete fg=244
+  ble-face -s syntax_error fg=red
+  ble-attach
+fi

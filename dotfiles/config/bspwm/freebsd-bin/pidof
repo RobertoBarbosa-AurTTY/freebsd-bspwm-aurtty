@@ -1,0 +1,22 @@
+#!/bin/sh
+# pidof do Linux sobre pgrep (aceita -q, -s, -x)
+quiet=0 single=0
+while [ $# -gt 0 ]; do
+  case $1 in
+    -q) quiet=1 ;;
+    -s) single=1 ;;
+    -x|-c|-n) ;;
+    -*) ;;
+    *) break ;;
+  esac
+  shift
+done
+[ $# -gt 0 ] || exit 1
+pids=""
+for nome in "$@"; do
+  pids="$pids $(pgrep -x "$nome" | tr '\n' ' ')"
+done
+pids=$(echo $pids)
+[ -n "$pids" ] || exit 1
+[ $quiet -eq 1 ] && exit 0
+if [ $single -eq 1 ]; then echo "${pids%% *}"; else echo "$pids"; fi

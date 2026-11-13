@@ -1,0 +1,3 @@
+#!/bin/sh
+# GNU sed (pacote coreutils/gsed): os scripts do gh0stzk usam a sintaxe GNU
+exec /usr/local/bin/gsed "$@"

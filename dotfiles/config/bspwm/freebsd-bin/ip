@@ -1,0 +1,11 @@
+#!/bin/sh
+# Emula só o que os scripts usam: `ip route show default`
+# saída no formato do Linux: default via <gw> dev <iface>
+case "$*" in
+  "route show default"*|"route"*)
+    route -n get default 2>/dev/null | awk '
+      /gateway:/ {gw=$2} /interface:/ {dev=$2}
+      END { if (dev != "") print "default via " gw " dev " dev }'
+    ;;
+  *) echo "ip (shim FreeBSD): comando não suportado: $*" >&2; exit 1 ;;
+esac
