@@ -39,13 +39,6 @@ DEV_PKGS="neovim lazygit ripgrep fd-find tmux gh mise uv go-yq xh python3 node22
 sqlite3 postgresql17-client mariadb114-client valkey hs-ShellCheck bastille"
 DEV_PY="httpie pgcli pre-commit"
 
-# IA local: GGUF oficiais do Qwen3 no Hugging Face (arquivo e sha256 fixados)
-HF=https://huggingface.co/Qwen
-IA_1=Qwen3-1.7B-GGUF/Qwen3-1.7B-Q8_0.gguf;    IA_1_SHA=061b54daade076b5d3362dac252678d17da8c68f07560be70818cace6590cb1a
-IA_2=Qwen3-4B-GGUF/Qwen3-4B-Q4_K_M.gguf;      IA_2_SHA=7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5
-IA_3=Qwen3-8B-GGUF/Qwen3-8B-Q4_K_M.gguf;      IA_3_SHA=d98cdcbd03e17ce47681435b5150e34c1417f50b5c0019dd560e4882c5745785
-IA_4=Qwen3-14B-GGUF/Qwen3-14B-Q4_K_M.gguf;    IA_4_SHA=500a8806e85ee9c83f3ae08420295592451379b4f8cf2d0f41c15dffeb6b81f0
-
 # ---------- utilitários ----------
 cor() { printf '\033[%sm%s\033[0m\n' "$1" "$2"; }
 titulo() { echo; cor '1;35' "==> $*"; }
@@ -140,22 +133,8 @@ if [ $LINUXAPPS -eq 1 ]; then
   sim "opencode (agente de código com IA no terminal)?" s && OPENCODE=1
 fi
 
-# IA local: sugere o modelo pela RAM desta máquina
-IA=0
-RAM_GB=$(( ($(sysctl -n hw.physmem) + 536870912) / 1073741824 ))   # arredonda: 3,96 GB -> 4
-if   [ "$RAM_GB" -lt 7 ];  then SUG_IA=1
-elif [ "$RAM_GB" -lt 15 ]; then SUG_IA=2
-else SUG_IA=3; fi
 echo
-info "IA local (llama.cpp + Qwen3, roda offline; usa a GPU se houver). RAM detectada: ${RAM_GB} GB"
-info "        0) não instalar   1) Qwen3 1.7B (1,7 GB, até 6 GB de RAM)   2) Qwen3 4B (2,3 GB, 8 GB de RAM)"
-info "        3) Qwen3 8B (4,7 GB, 16 GB de RAM ou GPU de 8 GB)   4) Qwen3 14B (8,4 GB, 32 GB de RAM ou GPU de 12 GB)"
-perguntar "Modelo de IA" "$SUG_IA"
-IA=$RESPOSTA
-case $IA in 0|1|2|3|4) ;; *) erro "opção de IA inválida" ;; esac
-
-echo
-info "Resumo: usuário=$USUARIO teclado=$TECLADO vídeo=$VIDEO login=$LOGIN terminal=$TERMINAL dev=$DEV linux=$LINUXAPPS opencode=$OPENCODE ia=$IA"
+info "Resumo: usuário=$USUARIO teclado=$TECLADO vídeo=$VIDEO login=$LOGIN terminal=$TERMINAL dev=$DEV linux=$LINUXAPPS opencode=$OPENCODE"
 sim "Continuar?" s || exit 0
 
 # ---------- pacotes ----------
@@ -286,11 +265,8 @@ done
 [ -d "$BACKUP" ] && info "configs anteriores salvas em $BACKUP"
 
 # dock embaixo (Plank, ícones reais e sem fundo; super+d mostra/esconde). O aurtty-dock
-# mostra só os programas instalados (terminal, Chrome, VS Code, IA local).
+# mostra só os programas instalados (terminal, Chrome, VS Code).
 install -m 755 "$RAIZ/extras/dock/aurtty-dock" /usr/local/bin/aurtty-dock
-mkdir -p /usr/local/share/icons/hicolor/scalable/apps
-install -m 644 "$RAIZ/extras/dock/aurtty-ia.svg" /usr/local/share/icons/hicolor/scalable/apps/aurtty-ia.svg
-gtk-update-icon-cache -f /usr/local/share/icons/hicolor >>"$LOG" 2>&1 || true
 
 cat > "$CASA/.xinitrc" <<'EOF'
 #!/bin/sh
@@ -554,45 +530,6 @@ EOF
   [ -x /compat/linux/usr/share/code/code ] && info "VS Code: code"
 fi
 
-# ---------- IA local (llama.cpp + Qwen3) ----------
-# llama-server como serviço em 127.0.0.1:8080 (API compatível com a da OpenAI e
-# chat no navegador). O --fit (padrão) mede a GPU (Vulkan) e a RAM e ajusta
-# camadas e contexto sozinho: a mesma config serve com ou sem placa de vídeo.
-if [ "$IA" != 0 ]; then
-  titulo "IA local: llama.cpp + $(eval echo \$IA_$IA | cut -d/ -f2)"
-  for p in llama-cpp aichat; do
-    pkg install -q "$p" </dev/null >>"$LOG" 2>&1 || FALHARAM="$FALHARAM $p"
-  done
-  id llama >/dev/null 2>&1 || pw useradd llama -c "llama-server" -d /nonexistent -s /usr/sbin/nologin -G video
-  MODELOS=/usr/local/share/llama/models
-  mkdir -p "$MODELOS"
-  ARQ=$(eval echo \$IA_$IA); SHA=$(eval echo \$IA_${IA}_SHA); GGUF="$MODELOS/${ARQ#*/}"
-  if [ ! -f "$GGUF" ] || [ "$(sha256 -q "$GGUF")" != "$SHA" ]; then
-    info "baixando o modelo (pode levar alguns minutos)"
-    baixar_verificado "$HF/${ARQ%%/*}/resolve/main/${ARQ#*/}" "$SHA" "$GGUF"
-  fi
-  chmod 644 "$GGUF"
-  sysrc -q llama_server_enable=YES llama_server_user=llama llama_server_model="$GGUF" \
-    llama_server_args="--host 127.0.0.1 --port 8080 --alias local --parallel 1" >/dev/null
-  service llama-server restart >>"$LOG" 2>&1 || service llama-server start >>"$LOG" 2>&1 || true
-
-  # aichat: chat no terminal usando o servidor local
-  mkdir -p "$CASA/.config/aichat"
-  cat > "$CASA/.config/aichat/config.yaml" <<'EOF'
-# gerado pelo freebsd-bspwm-aurtty: IA local (llama-server em 127.0.0.1:8080)
-model: local:local
-clients:
-- type: openai-compatible
-  name: local
-  api_base: http://127.0.0.1:8080/v1
-  models:
-  - name: local
-EOF
-  chown -R "$USUARIO:$GRUPO" "$CASA/.config/aichat"
-  install -m 644 "$RAIZ/extras/dock/aurtty-ia.desktop" /usr/local/share/applications/aurtty-ia.desktop
-  info "IA: 'aichat' no terminal ou http://127.0.0.1:8080 no navegador (log em /var/log/llama-server.log)"
-fi
-
 # ---------- opencode (binário Linux oficial, via npm) ----------
 # Pega a versão mais recente publicada no npm e confere o sha512 informado
 # pelo próprio registro. Roda pela emulação Linux (Debian em /compat/linux).
@@ -609,29 +546,12 @@ if [ $OPENCODE -eq 1 ]; then
     ln -sf /usr/local/lib/opencode/opencode /usr/local/bin/opencode
     # sem autoupdate: o binário é do root; para atualizar, rode o instalador de novo
     mkdir -p "$CASA/.config/opencode"
-    if [ "$IA" != 0 ]; then
-      cat > "$CASA/.config/opencode/opencode.json" <<'EOF'
-{
-  "$schema": "https://opencode.ai/config.json",
-  "autoupdate": false,
-  "provider": {
-    "local": {
-      "npm": "@ai-sdk/openai-compatible",
-      "name": "IA local (llama.cpp)",
-      "options": { "baseURL": "http://127.0.0.1:8080/v1" },
-      "models": { "local": { "name": "Qwen3 local" } }
-    }
-  }
-}
-EOF
-    else
-      cat > "$CASA/.config/opencode/opencode.json" <<'EOF'
+    cat > "$CASA/.config/opencode/opencode.json" <<'EOF'
 {
   "$schema": "https://opencode.ai/config.json",
   "autoupdate": false
 }
 EOF
-    fi
     chown -R "$USUARIO:$GRUPO" "$CASA/.config/opencode"
     info "opencode $OC_VER: rode 'opencode' na pasta do projeto (modelos gratuitos: /models)"
   else

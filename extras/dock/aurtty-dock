@@ -5,7 +5,7 @@
 #   aurtty-dock iniciar    sobe a dock (se não estiver escondida pelo usuário)
 #   aurtty-dock alternar   mostra/esconde (atalho super+d); a escolha é lembrada
 #
-# Ícones: terminal, Chrome, VS Code e IA local, só os que estiverem instalados.
+# Ícones: terminal, Chrome e VS Code, só os que estiverem instalados.
 
 OCULTA="$HOME/.config/aurtty/dock-oculta"
 APPS=/usr/local/share/applications
@@ -26,7 +26,7 @@ configurar() {
     mkdir -p "$LAUNCHERS"
     rm -f "$LAUNCHERS"/*.dockitem
     itens=""
-    for d in Alacritty google-chrome code aurtty-ia; do
+    for d in Alacritty google-chrome code; do
         [ -f "$APPS/$d.desktop" ] || continue
         printf '[PlankDockItemPreferences]\nLauncher=file://%s/%s.desktop\n' "$APPS" "$d" > "$LAUNCHERS/$d.dockitem"
         itens="$itens${itens:+, }'$d.dockitem'"

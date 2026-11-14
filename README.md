@@ -2,7 +2,7 @@
 
 Pós-instalação do **FreeBSD** que deixa a máquina pronta para desenvolver: **bspwm** com
 visual Tokyo Night, tela de login gráfica, terminal configurado, ferramentas de backend,
-Google Chrome e VS Code oficiais, IA local e opencode.
+Google Chrome e VS Code oficiais, opencode.
 
 Você instala um FreeBSD limpo, clona este repositório, roda um script, responde
 algumas perguntas e entra direto no bspwm.
@@ -49,7 +49,6 @@ O script pergunta:
 | Ferramentas de desenvolvimento backend | sim |
 | Google Chrome e VS Code oficiais (Debian na emulação Linux, ~1,5 GB) | sim |
 | opencode (agente de código no terminal; só aparece se o Chrome/VS Code for instalado) | sim |
-| IA local: modelo Qwen3 (0 = não instalar; 1.7B, 4B, 8B ou 14B) | sugerido pela RAM |
 
 O log fica em `/var/log/freebsd-bspwm-aurtty.log`. As configs que já existiam em
 `~/.config` são movidas para `~/.config-backup-<data>`.
@@ -98,8 +97,8 @@ O log fica em `/var/log/freebsd-bspwm-aurtty.log`. As configs que já existiam e
   e `reboot` voltam tudo como estava (ou escolha a cópia `antes-<data>` no menu do boot, opção 8).
   Guarda as 5 cópias mais recentes. Em UFS atualiza sem cópia, avisando antes. Para ter o
   desfazer, escolha ZFS na instalação do FreeBSD.
-- **Dock (embaixo):** os ícones reais do terminal, Chrome, VS Code e da IA local (abre o
-  `aichat`), sem fundo, crescendo ao passar o mouse (Plank). Só aparecem os programas
+- **Dock (embaixo):** os ícones reais do terminal, Chrome e VS Code, sem fundo,
+  crescendo ao passar o mouse (Plank). Só aparecem os programas
   instalados. **`super+d`** mostra/esconde a dock, e a escolha fica guardada.
 - **Chrome e VS Code (opcional):** um Debian 13 (trixie) é instalado com `debootstrap` em
   `/compat/linux`, a pasta onde a emulação Linux do FreeBSD procura bibliotecas. O Chrome
@@ -113,19 +112,10 @@ O log fica em `/var/log/freebsd-bspwm-aurtty.log`. As configs que já existiam e
 - **opencode (opcional):** o agente de código no terminal. Não há versão para FreeBSD, então o
   instalador baixa o binário Linux oficial (`opencode-linux-x64`, versão mais recente do npm, com
   o sha512 conferido) e ele roda pela emulação Linux, junto do Debian da opção do Chrome/VS Code.
-  Os modelos gratuitos do opencode funcionam direto (`/models`); com a IA local instalada, o
-  provedor `local` também aparece. Os comandos que ele executa usam primeiro as ferramentas do
+  Os modelos gratuitos do opencode funcionam direto (`/models`). Os comandos que ele executa
+  usam primeiro as ferramentas do
   Debian em `/compat/linux` e, se não existirem lá, as do FreeBSD. Autoatualização desligada:
   para atualizar, rode o instalador de novo.
-- **IA local (opcional):** llama.cpp (`llama-server`) como serviço em `127.0.0.1:8080`, com um
-  modelo **Qwen3** oficial em GGUF (sha256 fixado). O instalador sugere o tamanho pela RAM
-  (até 6 GB: 1.7B · 8 GB: 4B · 16 GB ou mais: 8B; o 14B é para 32 GB ou GPU de 12 GB). Funciona
-  offline, usa a GPU via Vulkan quando há driver (Intel/AMD com drm-kmod ou NVIDIA) e cai para
-  o processador sem ela: o `--fit` do llama.cpp ajusta camadas e contexto à memória sozinho.
-  Uso: `aichat "pergunta"` no terminal, o chat em `http://127.0.0.1:8080` no navegador, ou
-  qualquer extensão do VS Code compatível com a API da OpenAI (`http://127.0.0.1:8080/v1`,
-  modelo `local`). Trocar de modelo: baixe outro `.gguf` para `/usr/local/share/llama/models`,
-  rode `sysrc llama_server_model=<arquivo>` e `service llama-server restart`.
 - Temas e fontes externos são baixados com **sha256 fixado** (veja o topo do `install.sh`)
 
 ## Atalhos principais
