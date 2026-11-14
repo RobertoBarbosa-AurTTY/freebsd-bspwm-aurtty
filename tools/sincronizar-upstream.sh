@@ -91,20 +91,6 @@ sed -i 's/^P_TERM_OPACITY=.*/P_TERM_OPACITY="0.8"\t# Terminal transparency. Rang
 cp "$RAIZ"/extras/walls/*.webp "$B/rices/emilia/walls/"
 sed -i 's|^DEFAULT_WALL=.*|DEFAULT_WALL="$HOME/.config/bspwm/rices/emilia/walls/aurtty-freebsd-dark.webp"|' "$B/rices/emilia/theme-config.bash"
 
-
-# Dock embaixo com os ícones reais (Plank, sem fundo): sobe junto com a bar07.
-# O aurtty-dock (extras/dock, instalado em /usr/local/bin) respeita se o usuário escondeu.
-cat >> "$B/bars/bar07/Bar.bash" <<'EOF'
-# freebsd-bspwm-aurtty: dock embaixo (super+d mostra/esconde)
-command -v aurtty-dock >/dev/null && aurtty-dock iniciar
-EOF
-cat >> "$B/config/sxhkdrc" <<'EOF'
-
-# Dock: mostra/esconde (freebsd-bspwm-aurtty)
-super + d
-	aurtty-dock alternar
-EOF
-
 # Paleta opcional de fogo para a barra (desligada: a barra usa as cores do Emilia).
 # Para ativar: em bars/bar07/config.ini troque "include-file = ../colors.ini" por "include-file = fogo.ini"
 cp "$RAIZ/extras/polybar/fogo.ini" "$B/bars/bar07/fogo.ini"

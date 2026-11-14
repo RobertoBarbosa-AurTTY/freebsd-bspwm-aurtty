@@ -1,8 +1,8 @@
 # freebsd-bspwm-aurtty
 
 Pós-instalação do **FreeBSD** que deixa a máquina pronta para desenvolver: **bspwm** com
-visual Tokyo Night, tela de login gráfica, terminal configurado, ferramentas de backend,
-Google Chrome e VS Code oficiais, opencode.
+visual Tokyo Night, tela de login gráfica, terminal configurado, Firefox, PCManFM,
+ferramentas de backend e AstroNvim (Neovim).
 
 Você instala um FreeBSD limpo, clona este repositório, roda um script, responde
 algumas perguntas e entra direto no bspwm.
@@ -14,7 +14,7 @@ Tiradas numa VM (QEMU, 1920x1080, sem aceleração de vídeo) logo depois de rod
 **Tela de login** (LightDM com o tema `AurTTY-Login`)
 ![Tela de login](docs/screenshots/login-v2.png)
 
-**Área de trabalho** (polybar `bar07` em cima; embaixo, a dock com os ícones reais e sem fundo, `super+d` esconde)
+**Área de trabalho** (polybar `bar07` em cima)
 ![Área de trabalho](docs/screenshots/desktop-v3.png)
 
 **Menu de aplicativos** (`super+espaço`)
@@ -22,9 +22,6 @@ Tiradas numa VM (QEMU, 1920x1080, sem aceleração de vídeo) logo depois de rod
 
 **Terminal** (saudação do universo sorteada a cada terminal, com as informações do sistema ao lado)
 ![Terminal](docs/screenshots/terminal-v3.png)
-
-**Desenvolvimento** (VS Code oficial via emulação Linux; os bancos do `devdb` rodando em jails e as ferramentas de backend)
-![VS Code e ferramentas](docs/screenshots/apps-v3.png)
 
 ## Instalação
 
@@ -47,8 +44,6 @@ O script pergunta:
 | Como entrar: tela de login gráfica (LightDM), login no `ttyv0` abrindo o bspwm, ou manual (`startx`) | LightDM |
 | Terminal estilo AurTTY: bash + oh-my-bash (powerline) + ble.sh como shell padrão | sim |
 | Ferramentas de desenvolvimento backend | sim |
-| Google Chrome e VS Code oficiais (Debian na emulação Linux, ~1,5 GB) | sim |
-| opencode (agente de código no terminal; só aparece se o Chrome/VS Code for instalado) | sim |
 
 O log fica em `/var/log/freebsd-bspwm-aurtty.log`. As configs que já existiam em
 `~/.config` são movidas para `~/.config-backup-<data>`.
@@ -56,6 +51,9 @@ O log fica em `/var/log/freebsd-bspwm-aurtty.log`. As configs que já existiam e
 ## O que é instalado
 
 - **Janela/barra:** bspwm, sxhkd, polybar (`bar07`), picom, rofi, dunst, jgmenu, alacritty
+- **Navegador e arquivos:** Firefox (`super+b`) e PCManFM, o gerenciador de arquivos (`super+f`)
+- **Editor:** AstroNvim, a configuração do Neovim em `~/.config/nvim` (os plugins são
+  baixados na primeira execução do `nvim`)
 - **Aparência:** tema GTK `TokyoNight-zk`, ícones `TokyoNight-SE`, cursor `Qogirr-Dark`,
   JetBrainsMono Nerd Font, FontAwesome, Material Design Icons, wallpapers do Emilia
 - **Sistema:** Xorg, dbus, pulseaudio, driver de vídeo escolhido
@@ -79,7 +77,7 @@ O log fica em `/var/log/freebsd-bspwm-aurtty.log`. As configs que já existiam e
   (`extras/bash/universo/*/render.py`, sem fotos) e os quadros já vêm prontos. `figura off`
   para a animação; no `.bashrc`, `FIGURA_FIXA=caranguejo` (nome da pasta) fixa uma figura,
   `FIGURA=0` desliga a saudação e `FIGURA_INFO=0`, só as informações.
-- **Desenvolvimento backend (opcional):** neovim, lazygit, ripgrep, fd, tmux, gh, mise
+- **Desenvolvimento backend (opcional):** lazygit, tmux, gh, mise
   (versões de linguagem por projeto, já ativado no `.bashrc`), uv, yq, xh, httpie, python3,
   node22 + npm, deno, sqlite3, clientes de PostgreSQL (`psql`, `pgcli`), MariaDB/MySQL e
   Valkey (`valkey-cli`, compatível com Redis), shellcheck e pre-commit. Docker não existe no
@@ -97,25 +95,6 @@ O log fica em `/var/log/freebsd-bspwm-aurtty.log`. As configs que já existiam e
   e `reboot` voltam tudo como estava (ou escolha a cópia `antes-<data>` no menu do boot, opção 8).
   Guarda as 5 cópias mais recentes. Em UFS atualiza sem cópia, avisando antes. Para ter o
   desfazer, escolha ZFS na instalação do FreeBSD.
-- **Dock (embaixo):** os ícones reais do terminal, Chrome e VS Code, sem fundo,
-  crescendo ao passar o mouse (Plank). Só aparecem os programas
-  instalados. **`super+d`** mostra/esconde a dock, e a escolha fica guardada.
-- **Chrome e VS Code (opcional):** um Debian 13 (trixie) é instalado com `debootstrap` em
-  `/compat/linux`, a pasta onde a emulação Linux do FreeBSD procura bibliotecas. O Chrome
-  (`google-chrome-stable`) e o VS Code (`code`) vêm dos repositórios oficiais do Google e da
-  Microsoft e rodam direto pelo usuário, sem chroot, pelos lançadores `google-chrome` e `code`
-  (`--no-sandbox`, porque a emulação não tem namespaces do Linux). `/tmp` e `/home` são montados
-  por nullfs (veja o `/etc/fstab`); o DNS é o do FreeBSD. O `super+b` passa a abrir o Chrome.
-  Atualizar: `chroot /compat/linux apt update && chroot /compat/linux apt upgrade` (copie antes o
-  `/etc/resolv.conf` para `/compat/linux/etc/` e apague depois). Não instale `linux_base-*`, ele
-  usa a mesma pasta.
-- **opencode (opcional):** o agente de código no terminal. Não há versão para FreeBSD, então o
-  instalador baixa o binário Linux oficial (`opencode-linux-x64`, versão mais recente do npm, com
-  o sha512 conferido) e ele roda pela emulação Linux, junto do Debian da opção do Chrome/VS Code.
-  Os modelos gratuitos do opencode funcionam direto (`/models`). Os comandos que ele executa
-  usam primeiro as ferramentas do
-  Debian em `/compat/linux` e, se não existirem lá, as do FreeBSD. Autoatualização desligada:
-  para atualizar, rode o instalador de novo.
 - Temas e fontes externos são baixados com **sha256 fixado** (veja o topo do `install.sh`)
 
 ## Atalhos principais
@@ -124,6 +103,8 @@ O log fica em `/var/log/freebsd-bspwm-aurtty.log`. As configs que já existiam e
 |---|---|
 | `super + Return` | terminal |
 | `super + space` | lançador (rofi) |
+| `super + b` | Firefox |
+| `super + f` | PCManFM |
 | `alt + F1` | lista de atalhos |
 | `super + 1..9` | áreas de trabalho |
 | `super + x` | fechar janela |

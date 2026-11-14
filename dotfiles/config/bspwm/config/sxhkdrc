@@ -333,7 +333,3 @@ XF86Audio{RaiseVolume,LowerVolume,Mute}
 # Music Control
 XF86Audio{Next,Prev,Play,Stop}
     MediaControl {--next,--previous,--toggle,--stop}
-
-# Dock: mostra/esconde (freebsd-bspwm-aurtty)
-super + d
-	aurtty-dock alternar

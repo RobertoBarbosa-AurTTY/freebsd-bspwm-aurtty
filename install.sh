@@ -24,18 +24,19 @@ BLE_URL=https://github.com/akinomyoga/ble.sh/releases/download/v0.4.0-devel3/ble
 BLE_SHA=c8612ee612bc6b10dbfd6e85c6cbdfd7caf152a12d1f9de22ea0a9d735b3080c
 FZFTAB_URL=https://codeload.github.com/lincheney/fzf-tab-completion/tar.gz/7014e0a7cd68fe3530e2f58c45740d17e98f05b8
 FZFTAB_SHA=eec482c89e536884c5101d20944905e93d864b2c22404d01381d4e80f9cbf718
-# chaveiro oficial do Debian: o debootstrap do FreeBSD não traz e baixaria sem checar assinatura
-DEBKEY_URL=https://deb.debian.org/debian/pool/main/d/debian-archive-keyring/debian-archive-keyring_2025.1_all.deb
-DEBKEY_SHA=9ea7778e443144ca490668737a8ab22dd3e748bb99e805e22ec055abeb3c7fac
+# AstroNvim: template oficial com o commit fixado (sha256 do tarball)
+ASTRONVIM_URL=https://codeload.github.com/AstroNvim/template/tar.gz/49a7161b776f8bc6c23508819ea1ad4e7b359bee
+ASTRONVIM_SHA=8941afa733b63a07ba8626dd9daa91728365c411e73ed6a389d35dfc50c2202b
 
 PACOTES="xorg bspwm sxhkd polybar picom rofi dunst alacritty feh xsettingsd jgmenu clipcat
 xdo xdotool jq ImageMagick7 maim xclip pamixer playerctl pavucontrol pulseaudio
 i3lock-color webp webp-pixbuf-loader bash gsed coreutils git curl dbus jetbrains-mono noto-basic
-papirus-icon-theme eza zoxide fzf bat gawk gnugrep fastfetch python3 plank dconf"
+papirus-icon-theme eza zoxide fzf bat gawk gnugrep fastfetch python3
+firefox pcmanfm neovim ripgrep fd-find"
 
 # ferramentas de desenvolvimento backend (opcional). Os py3xx-* entram depois,
 # com a versão do python padrão do repositório. Sem Docker no FreeBSD.
-DEV_PKGS="neovim lazygit ripgrep fd-find tmux gh mise uv go-yq xh python3 node22 npm-node22 deno
+DEV_PKGS="lazygit tmux gh mise uv go-yq xh python3 node22 npm-node22 deno
 sqlite3 postgresql17-client mariadb114-client valkey hs-ShellCheck bastille"
 DEV_PY="httpie pgcli pre-commit"
 
@@ -122,19 +123,10 @@ TERMINAL=0
 sim "Terminal estilo AurTTY (bash + oh-my-bash powerline + ble.sh + fzf-tab) como shell padrão?" s && TERMINAL=1
 
 DEV=0
-sim "Ferramentas de desenvolvimento backend (nvim, node, deno, python, mise, clientes de banco...)?" s && DEV=1
-
-LINUXAPPS=0
-sim "Google Chrome e VS Code oficiais (Debian na emulação Linux, baixa ~1,5 GB)?" s && LINUXAPPS=1
-
-# opencode só tem binário Linux: depende do Debian da opção acima
-OPENCODE=0
-if [ $LINUXAPPS -eq 1 ]; then
-  sim "opencode (agente de código com IA no terminal)?" s && OPENCODE=1
-fi
+sim "Ferramentas de desenvolvimento backend (node, deno, python, mise, clientes de banco...)?" s && DEV=1
 
 echo
-info "Resumo: usuário=$USUARIO teclado=$TECLADO vídeo=$VIDEO login=$LOGIN terminal=$TERMINAL dev=$DEV linux=$LINUXAPPS opencode=$OPENCODE"
+info "Resumo: usuário=$USUARIO teclado=$TECLADO vídeo=$VIDEO login=$LOGIN terminal=$TERMINAL dev=$DEV"
 sim "Continuar?" s || exit 0
 
 # ---------- pacotes ----------
@@ -264,16 +256,24 @@ for f in .gtkrc-2.0 .icons; do
 done
 [ -d "$BACKUP" ] && info "configs anteriores salvas em $BACKUP"
 
-# dock embaixo (Plank, ícones reais e sem fundo; super+d mostra/esconde). O aurtty-dock
-# mostra só os programas instalados (terminal, Chrome, VS Code).
-install -m 755 "$RAIZ/extras/dock/aurtty-dock" /usr/local/bin/aurtty-dock
+# ---------- AstroNvim (configuração do Neovim) ----------
+titulo "AstroNvim"
+baixar_verificado "$ASTRONVIM_URL" "$ASTRONVIM_SHA" "$TMP/astronvim.tar.gz"
+if [ -e "$CASA/.config/nvim" ]; then
+  mkdir -p "$BACKUP"
+  mv "$CASA/.config/nvim" "$BACKUP/"
+fi
+mkdir -p "$CASA/.config/nvim"
+tar -xf "$TMP/astronvim.tar.gz" -C "$CASA/.config/nvim" --strip-components 1
+info "config em ~/.config/nvim; o 'nvim' instala os plugins na primeira execução"
 
 cat > "$CASA/.xinitrc" <<'EOF'
 #!/bin/sh
 # gerado pelo freebsd-bspwm-aurtty
 export LANG=${LANG:-pt_BR.UTF-8}
 export XDG_CURRENT_DESKTOP=bspwm
-command -v google-chrome >/dev/null && export BROWSER=google-chrome
+export BROWSER=firefox
+export FILEMANAGER=pcmanfm
 exec dbus-launch --exit-with-session bspwm
 EOF
 
@@ -315,7 +315,8 @@ if [ "$LOGIN" = 1 ]; then
 # freebsd-bspwm-aurtty: sessão bspwm aberta pela tela de login
 export LANG=${LANG:-pt_BR.UTF-8}
 export XDG_CURRENT_DESKTOP=bspwm
-command -v google-chrome >/dev/null && export BROWSER=google-chrome
+export BROWSER=firefox
+export FILEMANAGER=pcmanfm
 exec dbus-launch --exit-with-session bspwm
 EOF
   chmod 755 /usr/local/bin/aurtty-session
@@ -445,121 +446,6 @@ if [ $DEV -eq 1 ]; then
   info "devdb: 'devdb criar postgres' (ou mysql, valkey, mongo) sobe o banco numa jail"
 fi
 
-# ---------- Chrome e VS Code (Debian na emulação Linux) ----------
-# O FreeBSD procura binários Linux primeiro em /compat/linux, então um Debian
-# instalado ali roda direto pelo usuário, sem chroot. /tmp (socket do X) e
-# /home entram por nullfs; sem resolv.conf no Debian ele usa o do FreeBSD.
-if [ $LINUXAPPS -eq 1 ]; then
-  titulo "Chrome e VS Code: Debian 13 em /compat/linux"
-  sysrc -q linux_enable=YES >/dev/null
-  kldload -n linux64
-  for p in debootstrap gnupg; do                 # gnupg: gpgv confere a assinatura do Debian
-    pkg install -q "$p" </dev/null >>"$LOG" 2>&1 || FALHARAM="$FALHARAM $p"
-  done
-  if [ ! -f /compat/linux/etc/debian_version ]; then
-    info "baixando o Debian base (alguns minutos)"
-    baixar_verificado "$DEBKEY_URL" "$DEBKEY_SHA" "$TMP/debkey.deb"
-    (cd "$TMP" && tar -xf debkey.deb data.tar.xz && tar -xf data.tar.xz ./usr/share/keyrings)
-    # o debootstrap verifica com o gpgv, mas antes exige achar um "gpgv2" no PATH
-    mkdir -p "$TMP/bin" && ln -sf /usr/local/bin/gpgv "$TMP/bin/gpgv2"
-    PATH="$TMP/bin:$PATH" debootstrap --keyring="$TMP/usr/share/keyrings/debian-archive-keyring.pgp" \
-      --arch=amd64 trixie /compat/linux http://deb.debian.org/debian >>"$LOG" 2>&1 \
-      || cor '1;31' "    debootstrap falhou (veja $LOG)"
-  fi
-  service linux start >>"$LOG" 2>&1 || true
-  if ! grep -q '/compat/linux/tmp' /etc/fstab; then
-    cat >> /etc/fstab <<'EOF'
-# freebsd-bspwm-aurtty: Debian em /compat/linux enxerga o /tmp (X11) e o /home reais
-/tmp	/compat/linux/tmp	nullfs	rw,late	0	0
-/home	/compat/linux/home	nullfs	rw,late	0	0
-EOF
-  fi
-  mount | grep -q ' /compat/linux/tmp ' || mount /compat/linux/tmp
-  mount | grep -q ' /compat/linux/home ' || mount /compat/linux/home
-  cp /etc/resolv.conf /compat/linux/etc/resolv.conf   # o apt roda em chroot e precisa dele
-  # repositórios oficiais do Google e da Microsoft (chaves deles, assinadas no apt)
-  chroot /compat/linux /bin/bash >>"$LOG" 2>&1 <<'EOF' || cor '1;31' "    instalação no Debian falhou (veja $LOG)"
-set -e
-export DEBIAN_FRONTEND=noninteractive LANG=C
-# sem systemd o pacote dbus não cria o grupo messagebus e o dpkg para
-getent group messagebus >/dev/null || groupadd -r messagebus
-getent passwd messagebus >/dev/null || useradd -r -g messagebus -d /nonexistent -s /usr/sbin/nologin messagebus
-apt-get update
-apt-get install -y --no-install-recommends ca-certificates curl gpg fonts-noto-core fonts-noto-color-emoji xdg-utils libgl1 libegl1 libgbm1 libasound2t64 libnss3
-install -d -m 755 /etc/apt/keyrings
-curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor --yes -o /etc/apt/keyrings/google.gpg
-echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google.gpg] https://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list
-curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor --yes -o /etc/apt/keyrings/microsoft.gpg
-echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/code stable main" > /etc/apt/sources.list.d/vscode.list
-apt-get update
-apt-get install -y google-chrome-stable code
-EOF
-  rm -f /compat/linux/etc/resolv.conf
-
-  # lançadores: o sandbox do Chrome/Electron usa namespaces do Linux, que a emulação não tem
-  cat > /usr/local/bin/google-chrome <<'EOF'
-#!/bin/sh
-# freebsd-bspwm-aurtty: Chrome do Debian em /compat/linux
-exec /compat/linux/opt/google/chrome/chrome --no-sandbox --test-type --password-store=basic "$@"
-EOF
-  cat > /usr/local/bin/code <<'EOF'
-#!/bin/sh
-# freebsd-bspwm-aurtty: VS Code do Debian em /compat/linux
-exec /compat/linux/usr/share/code/code --no-sandbox --disable-gpu "$@"
-EOF
-  chmod 755 /usr/local/bin/google-chrome /usr/local/bin/code
-  mkdir -p /usr/local/share/applications
-  cat > /usr/local/share/applications/google-chrome.desktop <<'EOF'
-[Desktop Entry]
-Name=Google Chrome
-Exec=/usr/local/bin/google-chrome %U
-Icon=/compat/linux/opt/google/chrome/product_logo_128.png
-Type=Application
-Categories=Network;WebBrowser;
-MimeType=text/html;x-scheme-handler/http;x-scheme-handler/https;
-EOF
-  cat > /usr/local/share/applications/code.desktop <<'EOF'
-[Desktop Entry]
-Name=Visual Studio Code
-Exec=/usr/local/bin/code %F
-Icon=/compat/linux/usr/share/pixmaps/vscode.png
-Type=Application
-Categories=Development;IDE;TextEditor;
-EOF
-  [ -x /compat/linux/opt/google/chrome/chrome ] && info "Chrome: google-chrome (super+b abre o navegador)"
-  [ -x /compat/linux/usr/share/code/code ] && info "VS Code: code"
-fi
-
-# ---------- opencode (binário Linux oficial, via npm) ----------
-# Pega a versão mais recente publicada no npm e confere o sha512 informado
-# pelo próprio registro. Roda pela emulação Linux (Debian em /compat/linux).
-if [ $OPENCODE -eq 1 ]; then
-  titulo "opencode"
-  META=$(fetch -qo - https://registry.npmjs.org/opencode-linux-x64/latest) || META=""
-  OC_VER=$(echo "$META" | jq -r .version 2>/dev/null)
-  OC_URL=$(echo "$META" | jq -r .dist.tarball 2>/dev/null)
-  OC_SHA=$(echo "$META" | jq -r .dist.integrity 2>/dev/null | sed 's/^sha512-//' | b64decode -r 2>/dev/null | od -An -v -tx1 | tr -d ' \n')
-  if [ -n "$OC_SHA" ] && fetch -q -o "$TMP/opencode.tgz" "$OC_URL" && [ "$(sha512 -q "$TMP/opencode.tgz")" = "$OC_SHA" ]; then
-    mkdir -p /usr/local/lib/opencode
-    tar -xzf "$TMP/opencode.tgz" -C "$TMP" package/bin/opencode
-    install -m 755 "$TMP/package/bin/opencode" /usr/local/lib/opencode/opencode
-    ln -sf /usr/local/lib/opencode/opencode /usr/local/bin/opencode
-    # sem autoupdate: o binário é do root; para atualizar, rode o instalador de novo
-    mkdir -p "$CASA/.config/opencode"
-    cat > "$CASA/.config/opencode/opencode.json" <<'EOF'
-{
-  "$schema": "https://opencode.ai/config.json",
-  "autoupdate": false
-}
-EOF
-    chown -R "$USUARIO:$GRUPO" "$CASA/.config/opencode"
-    info "opencode $OC_VER: rode 'opencode' na pasta do projeto (modelos gratuitos: /models)"
-  else
-    cor '1;31' "    opencode: falha ao baixar ou checksum não confere"
-    FALHARAM="$FALHARAM opencode"
-  fi
-fi
-
 # Sem GPU (vesa/scfb) o OpenGL é por software e o picom com glx inverte
 # vermelho/azul nas janelas transparentes (rofi). O xrender evita isso.
 if [ "$VIDEO" = 1 ] || [ "$VIDEO" = 2 ]; then
@@ -585,3 +471,4 @@ else
   info "entre como '$USUARIO' e rode: startx"
 fi
 info "atalhos: super+Return (terminal), super+@space (menu), alt+F1 (ajuda)"
+info "apps: super+b Firefox, super+f PCManFM, nvim (AstroNvim)"
