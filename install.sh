@@ -10,6 +10,7 @@ set -eu
 RAIZ=$(cd "$(dirname "$0")" && pwd)
 DOT="$RAIZ/dotfiles"
 LOG=/var/log/freebsd-bspwm-aurtty.log
+INICIO=$(date +%s)
 
 # Recursos externos fixados (versão + sha256)
 GH0STZK_PKGS=https://gh0stzk.github.io/pkgs/x86_64
@@ -40,26 +41,180 @@ DEV_PKGS="lazygit tmux gh mise uv go-yq xh python3 node22 npm-node22 deno
 sqlite3 postgresql17-client mariadb114-client valkey hs-ShellCheck bastille"
 DEV_PY="httpie pgcli pre-commit"
 
-# ---------- utilitários ----------
-cor() { printf '\033[%sm%s\033[0m\n' "$1" "$2"; }
-titulo() { echo; cor '1;35' "==> $*"; }
-info() { cor '0;36' "    $*"; }
-erro() { cor '1;31' "ERRO: $*" >&2; exit 1; }
+# ---------- interface ----------
+UI_TTY=0
+if [ -t 1 ] && [ "${TERM:-dumb}" != dumb ]; then UI_TTY=1; fi
+
+UI_COR=0
+if [ "$UI_TTY" -eq 1 ] && [ -z "${NO_COLOR:-}" ]; then UI_COR=1; fi
+
+UI_256=0
+case ${TERM:-} in *256color*) UI_256=1 ;; esac
+
+C_RST=; C_BOLD=; C_DIM=; C_ACC=; C_MAG=; C_GRN=; C_RED=; C_YEL=
+if [ "$UI_COR" -eq 1 ]; then
+  C_RST=$(printf '\033[0m')
+  C_BOLD=$(printf '\033[1m')
+  C_DIM=$(printf '\033[2m')
+  if [ "$UI_256" -eq 1 ]; then
+    C_ACC=$(printf '\033[38;5;111m')
+    C_MAG=$(printf '\033[38;5;141m')
+    C_GRN=$(printf '\033[38;5;114m')
+    C_RED=$(printf '\033[38;5;204m')
+    C_YEL=$(printf '\033[38;5;180m')
+  else
+    C_ACC=$(printf '\033[36m')
+    C_MAG=$(printf '\033[35m')
+    C_GRN=$(printf '\033[32m')
+    C_RED=$(printf '\033[31m')
+    C_YEL=$(printf '\033[33m')
+  fi
+fi
+
+cor() { if [ "$UI_COR" -eq 1 ]; then printf '\033[%sm%s\033[0m\n' "$1" "$2"; else printf '%s\n' "$2"; fi; }
+
+banner() {
+  printf '\n'
+  printf '  %s─────────────────────────────────────────────────────────────────%s\n' "$C_DIM" "$C_RST"
+  printf '  %s▄▀█ █░█ █▀█ ▀█▀ ▀█▀ █▄█%s\n' "$C_MAG" "$C_RST"
+  printf '  %s█▀█ █▄█ █▀▄ ░█░ ░█░ ░█░%s\n' "$C_ACC" "$C_RST"
+  printf '\n'
+  printf '  %s%sfreebsd-bspwm-aurtty%s\n' "$C_BOLD" "$C_ACC" "$C_RST"
+  printf '  %sPós-instalação do FreeBSD para desenvolvimento, redes e segurança%s\n' "$C_DIM" "$C_RST"
+  printf '  %sFreeBSD %s · %s%s\n' "$C_DIM" "$(uname -r)" "$(uname -m)" "$C_RST"
+  printf '  %s─────────────────────────────────────────────────────────────────%s\n' "$C_DIM" "$C_RST"
+}
+
+titulo() {
+  printf '\n  %s◆%s %s%s%s\n' "$C_MAG" "$C_RST" "$C_BOLD" "$*" "$C_RST"
+  printf '  %s─────────────────────────────────────────────────────────────────%s\n' "$C_DIM" "$C_RST"
+}
+
+info()  { printf '  %s·%s %s\n' "$C_ACC" "$C_RST" "$*"; }
+ok()    { printf '  %sok%s   %s\n' "$C_GRN" "$C_RST" "$*"; }
+aviso() { printf '  %s!%s %s\n' "$C_YEL" "$C_RST" "$*"; }
+erro()  { printf '\n  %s%sERRO%s %s\n\n' "$C_RED" "$C_BOLD" "$C_RST" "$*" >&2; exit 1; }
+
+_prompt() { # texto [dica]
+  printf '  %s?%s %s' "$C_ACC" "$C_RST" "$1"
+  if [ -n "${2:-}" ]; then printf ' %s[%s]%s' "$C_DIM" "$2" "$C_RST"; fi
+  printf ': '
+}
 
 perguntar() { # perguntar "texto" padrão -> $RESPOSTA
-  printf '\033[1;34m?\033[0m %s [%s]: ' "$1" "$2"
+  _prompt "$1" "$2"
   read -r RESPOSTA </dev/tty || true
   [ -n "$RESPOSTA" ] || RESPOSTA=$2
 }
 
 sim() { # sim "texto" s|n
-  perguntar "$1 (s/n)" "$2"
+  case $2 in [sS]) _dica='S/n' ;; *) _dica='s/N' ;; esac
+  _prompt "$1" "$_dica"
+  read -r RESPOSTA </dev/tty || true
+  [ -n "$RESPOSTA" ] || RESPOSTA=$2
   case $RESPOSTA in [sSyY]*) return 0 ;; *) return 1 ;; esac
 }
 
+opcoes() { # opcoes 1 "texto" 2 "texto" ...
+  while [ $# -ge 2 ]; do
+    printf '      %s%s)%s %s\n' "$C_ACC" "$1" "$C_RST" "$2"
+    shift 2
+  done
+}
+
+_barra() { # porcentagem [largura]
+  _bp=$1
+  _bw=${2:-20}
+  _bf=$((_bp * _bw / 100))
+  _be=$((_bw - _bf))
+  printf '%s' "$C_GRN"
+  while [ "$_bf" -gt 0 ]; do printf '█'; _bf=$((_bf - 1)); done
+  printf '%s' "$C_DIM"
+  while [ "$_be" -gt 0 ]; do printf '░'; _be=$((_be - 1)); done
+  printf '%s' "$C_RST"
+}
+
+_spinner_exec() { # rótulo comando...
+  _se_rotulo=$1
+  shift
+  if [ "$UI_TTY" -eq 0 ]; then
+    if "$@" >>"$LOG" 2>&1; then return 0; else return 1; fi
+  fi
+  _se_dir=$(mktemp -d)
+  ( if "$@" >>"$LOG" 2>&1; then echo 0 >"$_se_dir/rc"; else echo 1 >"$_se_dir/rc"; fi ) &
+  _se_pid=$!
+  _se_i=0
+  while [ ! -f "$_se_dir/rc" ]; do
+    case $((_se_i % 4)) in
+      0) _se_spin='|' ;;
+      1) _se_spin='/' ;;
+      2) _se_spin='-' ;;
+      *) _se_spin='\' ;;
+    esac
+    printf '\r\033[K    %s↓%s %-50.50s %s%s%s' "$C_ACC" "$C_RST" "$_se_rotulo" "$C_DIM" "$_se_spin" "$C_RST"
+    sleep 0.12
+    _se_i=$((_se_i + 1))
+  done
+  wait "$_se_pid" || true
+  _se_rc=$(cat "$_se_dir/rc")
+  rm -rf "$_se_dir"
+  printf '\r\033[K'
+  return "$_se_rc"
+}
+
+instalar_pacote() { # pacote número total
+  _ip_pkg=$1
+  _ip_num=$2
+  _ip_tot=$3
+  _ip_pct=$((_ip_num * 100 / _ip_tot))
+  if [ "$UI_TTY" -eq 0 ]; then
+    printf '  [%3d/%d] %3d%% %-30.30s ' "$_ip_num" "$_ip_tot" "$_ip_pct" "$_ip_pkg"
+    if pkg install -q "$_ip_pkg" </dev/null >>"$LOG" 2>&1; then
+      printf 'ok\n'
+    else
+      printf 'falhou\n'
+      FALHARAM="$FALHARAM $_ip_pkg"
+    fi
+    return 0
+  fi
+  _ip_dir=$(mktemp -d)
+  ( if pkg install -q "$_ip_pkg" </dev/null >>"$LOG" 2>&1; then echo 0 >"$_ip_dir/rc"; else echo 1 >"$_ip_dir/rc"; fi ) &
+  _ip_pid=$!
+  _ip_i=0
+  while [ ! -f "$_ip_dir/rc" ]; do
+    case $((_ip_i % 4)) in
+      0) _ip_spin='|' ;;
+      1) _ip_spin='/' ;;
+      2) _ip_spin='-' ;;
+      *) _ip_spin='\' ;;
+    esac
+    printf '\r\033[K  [%s] %3d%% %3d/%d  %-30.30s %s%s%s' "$(_barra "$_ip_pct" 20)" "$_ip_pct" "$_ip_num" "$_ip_tot" "$_ip_pkg" "$C_DIM" "$_ip_spin" "$C_RST"
+    sleep 0.12
+    _ip_i=$((_ip_i + 1))
+  done
+  wait "$_ip_pid" || true
+  _ip_rc=$(cat "$_ip_dir/rc")
+  rm -rf "$_ip_dir"
+  printf '\r\033[K  [%s] %3d%% %3d/%d  %-30.30s ' "$(_barra "$_ip_pct" 20)" "$_ip_pct" "$_ip_num" "$_ip_tot" "$_ip_pkg"
+  if [ "$_ip_rc" -eq 0 ]; then
+    printf '%sok%s\n' "$C_GRN" "$C_RST"
+  else
+    printf '%sfalhou%s\n' "$C_RED" "$C_RST"
+    FALHARAM="$FALHARAM $_ip_pkg"
+  fi
+}
+
 baixar_verificado() { # url sha256 destino
-  fetch -q -o "$3" "$1" || erro "falha ao baixar $1"
-  [ "$(sha256 -q "$3")" = "$2" ] || erro "checksum não confere: $1"
+  _bv_nome=${1##*/}
+  if _spinner_exec "$_bv_nome" fetch -q -o "$3" "$1"; then
+    if [ "$(sha256 -q "$3")" = "$2" ]; then
+      printf '    %s↓%s %-50.50s %sok%s %s(sha256)%s\n' "$C_ACC" "$C_RST" "$_bv_nome" "$C_GRN" "$C_RST" "$C_DIM" "$C_RST"
+    else
+      erro "checksum não confere: $1 (veja $LOG)"
+    fi
+  else
+    erro "falha ao baixar $1 (veja $LOG)"
+  fi
 }
 
 # ---------- checagens ----------
@@ -67,16 +222,11 @@ baixar_verificado() { # url sha256 destino
 [ "$(id -u)" -eq 0 ] || erro "rode como root (su -)"
 [ -d "$DOT/config/bspwm" ] || erro "pasta dotfiles/ não encontrada ao lado do script"
 
-cat <<'EOF'
-
-  ┌──────────────────────────────────────────────┐
-  │  freebsd-bspwm-aurtty                        │
-  │  ambiente de desenvolvimento com bspwm       │
-  └──────────────────────────────────────────────┘
-EOF
+banner
 
 # ---------- perguntas ----------
 titulo "Configuração"
+info "Enter aceita o valor padrão entre colchetes."
 
 perguntar "Usuário que vai usar o bspwm (existente ou novo)" "${SUDO_USER:-}"
 USUARIO=$RESPOSTA
@@ -86,12 +236,12 @@ id "$USUARIO" >/dev/null 2>&1 || CRIAR_USUARIO=1
 if [ $CRIAR_USUARIO -eq 1 ]; then
   info "o usuário '$USUARIO' não existe e será criado"
   while :; do
-    printf '\033[1;34m?\033[0m Senha para %s: ' "$USUARIO"
+    _prompt "Senha para $USUARIO" ""
     stty -echo </dev/tty; read -r SENHA </dev/tty; stty echo </dev/tty; echo
-    printf '\033[1;34m?\033[0m Repita a senha: '
+    _prompt "Repita a senha" ""
     stty -echo </dev/tty; read -r SENHA2 </dev/tty; stty echo </dev/tty; echo
     [ -n "$SENHA" ] && [ "$SENHA" = "$SENHA2" ] && break
-    cor '1;31' "    as senhas não conferem (ou estão vazias), tente de novo"
+    aviso "as senhas não conferem (ou estão vazias), tente de novo"
   done
 fi
 
@@ -104,36 +254,67 @@ if [ "$(sysctl -n kern.vm_guest)" != none ]; then
 else
   SUG=3
 fi
-echo
-info "Vídeo:  1) VM com BIOS (vesa)   2) VM/PC com UEFI sem driver (scfb)"
-info "        3) Intel ou AMD (drm-kmod)   4) NVIDIA"
+printf '\n'
+opcoes 1 "VM com BIOS (vesa)" \
+       2 "VM/PC com UEFI sem driver (scfb)" \
+       3 "Intel ou AMD (drm-kmod)" \
+       4 "NVIDIA"
 perguntar "Driver de vídeo" "$SUG"
 VIDEO=$RESPOSTA
 case $VIDEO in 1|2|3|4) ;; *) erro "opção de vídeo inválida" ;; esac
 
-echo
-info "Login:  1) tela de login gráfica (LightDM, com o tema Emilia)"
-info "        2) entrar no terminal (ttyv0) e o bspwm abre sozinho   3) manual (startx)"
+printf '\n'
+opcoes 1 "tela de login gráfica (LightDM, tema AurTTY)" \
+       2 "terminal (ttyv0) com autostart do bspwm" \
+       3 "manual (startx)"
 perguntar "Como entrar no bspwm" 1
 LOGIN=$RESPOSTA
 case $LOGIN in 1|2|3) ;; *) erro "opção de login inválida" ;; esac
 AUTOX=0; [ "$LOGIN" = 2 ] && AUTOX=1
 
+printf '\n'
+info "Terminal: bash + oh-my-bash (powerline) + ble.sh + fzf-tab"
 TERMINAL=0
-sim "Terminal estilo AurTTY (bash + oh-my-bash powerline + ble.sh + fzf-tab) como shell padrão?" s && TERMINAL=1
+sim "Usar esse terminal como shell padrão?" s && TERMINAL=1
 
+info "Backend: node, deno, python, mise, clientes de banco e devdb"
 DEV=0
-sim "Ferramentas de desenvolvimento backend (node, deno, python, mise, clientes de banco...)?" s && DEV=1
+sim "Instalar as ferramentas de desenvolvimento backend?" s && DEV=1
 
-echo
-info "Resumo: usuário=$USUARIO teclado=$TECLADO vídeo=$VIDEO login=$LOGIN terminal=$TERMINAL dev=$DEV"
-sim "Continuar?" s || exit 0
+case $VIDEO in
+  1) VID_TXT="vesa (VM com BIOS)" ;;
+  2) VID_TXT="scfb (UEFI sem driver)" ;;
+  3) VID_TXT="drm-kmod (Intel/AMD)" ;;
+  4) VID_TXT="NVIDIA (nvidia-driver)" ;;
+esac
+case $LOGIN in
+  1) LOGIN_TXT="LightDM (tela gráfica)" ;;
+  2) LOGIN_TXT="ttyv0 (autostart do bspwm)" ;;
+  3) LOGIN_TXT="startx (manual)" ;;
+esac
+if [ $TERMINAL -eq 1 ]; then TERM_TXT=sim; else TERM_TXT=não; fi
+if [ $DEV -eq 1 ]; then DEV_TXT=sim; else DEV_TXT=não; fi
+
+printf '\n  %sResumo%s\n' "$C_BOLD" "$C_RST"
+printf '  %s·%s Usuário: %s%s%s\n' "$C_ACC" "$C_RST" "$C_BOLD" "$USUARIO" "$C_RST"
+printf '  %s·%s Teclado: %s\n' "$C_ACC" "$C_RST" "$TECLADO"
+printf '  %s·%s Vídeo: %s\n' "$C_ACC" "$C_RST" "$VID_TXT"
+printf '  %s·%s Login: %s\n' "$C_ACC" "$C_RST" "$LOGIN_TXT"
+printf '  %s·%s Terminal: %s\n' "$C_ACC" "$C_RST" "$TERM_TXT"
+printf '  %s·%s Dev/redes: %s\n' "$C_ACC" "$C_RST" "$DEV_TXT"
+printf '\n'
+sim "Continuar com a instalação?" s || exit 0
 
 # ---------- pacotes ----------
-titulo "Instalando pacotes (log em $LOG)"
+titulo "Pacotes"
+info "log: $LOG"
 export ASSUME_ALWAYS_YES=yes
 pkg bootstrap -q </dev/null >>"$LOG" 2>&1 || true
-pkg update -q </dev/null >>"$LOG" 2>&1
+if _spinner_exec "atualizando índices do pkg" pkg update -q </dev/null; then
+  ok "índices de pacotes atualizados"
+else
+  erro "pkg update falhou (veja $LOG)"
+fi
 
 VIDEO_PKGS=""
 case $VIDEO in
@@ -151,11 +332,17 @@ if [ $DEV -eq 1 ]; then
   for p in $DEV_PY; do EXTRA_PKGS="$EXTRA_PKGS ${PY:-py312}-$p"; done
 fi
 
+TOTAL=$(printf '%s\n' $PACOTES $VIDEO_PKGS $EXTRA_PKGS | wc -l | tr -d ' ')
+info "$TOTAL pacotes na fila"
 FALHARAM=""
+_i=0
 for p in $PACOTES $VIDEO_PKGS $EXTRA_PKGS; do
-  printf '    %-28s' "$p"
-  if pkg install -q "$p" </dev/null >>"$LOG" 2>&1; then cor '0;32' ok; else cor '0;31' falhou; FALHARAM="$FALHARAM $p"; fi
+  _i=$((_i + 1))
+  instalar_pacote "$p" "$_i" "$TOTAL"
 done
+if [ -z "$FALHARAM" ]; then
+  ok "fila de pacotes concluída"
+fi
 
 # ---------- sistema ----------
 titulo "Configurando o sistema"
@@ -199,17 +386,18 @@ EndSection
 EOF
     ;;
 esac
-info "xorg.conf.d: teclado=$TECLADO"
+ok "xorg.conf.d configurado (teclado: $TECLADO)"
 
 # ---------- usuário ----------
 titulo "Usuário $USUARIO"
 if [ $CRIAR_USUARIO -eq 1 ]; then
   printf '%s\n' "$SENHA" | pw useradd "$USUARIO" -m -G wheel,video -s /bin/sh -c "$USUARIO" -h 0
   unset SENHA SENHA2
-  info "usuário criado"
+  ok "usuário $USUARIO criado (grupos wheel e video)"
 else
   pw groupmod video -m "$USUARIO"
   pw groupmod wheel -m "$USUARIO"
+  ok "usuário $USUARIO já existe (grupos wheel e video garantidos)"
 fi
 CASA=$(pw usershow "$USUARIO" | cut -d: -f9)
 GRUPO=$(id -gn "$USUARIO")
@@ -220,7 +408,6 @@ TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 for item in "$TEMA_GTK" "$TEMA_ICONES" "$TEMA_CURSOR"; do
   arq=${item% *}; sha=${item#* }
-  info "$arq"
   baixar_verificado "$GH0STZK_PKGS/$arq" "$sha" "$TMP/$arq"
 done
 mkdir -p /usr/local/share/themes /usr/local/share/icons
@@ -228,6 +415,7 @@ tar -xf "$TMP/${TEMA_GTK% *}" -C /usr/local/share/themes --strip-components 3 us
 tar -xf "$TMP/${TEMA_ICONES% *}" -C /usr/local/share/icons --strip-components 3 usr/share/icons
 tar -xf "$TMP/${TEMA_CURSOR% *}" -C /usr/local/share/icons --strip-components 3 usr/share/icons
 gtk-update-icon-cache -q -f /usr/local/share/icons/TokyoNight-SE 2>/dev/null || true
+ok "tema GTK, ícones e cursor instalados"
 
 # ---------- fontes ----------
 titulo "Fontes"
@@ -237,7 +425,7 @@ cp "$DOT"/fonts/* "$FONTES/"
 baixar_verificado "$NERDFONT_URL" "$NERDFONT_SHA" "$TMP/JetBrainsMono.tar.xz"
 tar -xf "$TMP/JetBrainsMono.tar.xz" -C "$FONTES" '*.ttf'
 fc-cache -f >/dev/null 2>&1
-info "JetBrainsMono Nerd Font, FontAwesome, Material Design Icons, MesloLGS NF"
+ok "JetBrainsMono Nerd Font, FontAwesome, Material Design Icons e MesloLGS NF instaladas"
 
 # ---------- dotfiles ----------
 titulo "Dotfiles do tema Emilia"
@@ -254,6 +442,7 @@ for f in .gtkrc-2.0 .icons; do
   if [ -e "$CASA/$f" ]; then mkdir -p "$BACKUP"; mv "$CASA/$f" "$BACKUP/"; fi
   cp -R "$DOT/home/$f" "$CASA/$f"
 done
+ok "configurações copiadas para ~/.config"
 [ -d "$BACKUP" ] && info "configs anteriores salvas em $BACKUP"
 
 # ---------- AstroNvim (configuração do Neovim) ----------
@@ -265,7 +454,7 @@ if [ -e "$CASA/.config/nvim" ]; then
 fi
 mkdir -p "$CASA/.config/nvim"
 tar -xf "$TMP/astronvim.tar.gz" -C "$CASA/.config/nvim" --strip-components 1
-info "config em ~/.config/nvim; o 'nvim' instala os plugins na primeira execução"
+ok "config em ~/.config/nvim (o 'nvim' instala os plugins na primeira execução)"
 
 cat > "$CASA/.xinitrc" <<'EOF'
 #!/bin/sh
@@ -305,6 +494,7 @@ fi
 # ---------- tela de login (LightDM) ----------
 if [ "$LOGIN" = 1 ]; then
   titulo "Tela de login: LightDM com o tema Emilia"
+  info "instalando lightdm e lightdm-gtk-greeter"
   for p in lightdm lightdm-gtk-greeter; do
     pkg install -q "$p" </dev/null >>"$LOG" 2>&1 || FALHARAM="$FALHARAM $p"
   done
@@ -381,7 +571,7 @@ polkit.addRule(function (action, subject) {
 });
 EOF
   sysrc -q lightdm_enable=YES >/dev/null
-  info "LightDM ativado (abre sozinho no boot)"
+  ok "LightDM ativado (abre sozinho no boot)"
 else
   sysrc -q lightdm_enable=NO >/dev/null 2>&1 || true
 fi
@@ -434,23 +624,23 @@ fi
 # ---------- atualizar: atualização com "desfazer" (boot environment do ZFS) ----------
 install -m 755 "$RAIZ/extras/bin/atualizar" /usr/local/bin/atualizar
 if [ "$(mount -p | awk '$2 == "/" {print $3}')" = zfs ]; then
-  info "atualizar: tira uma cópia do sistema antes de atualizar (atualizar --voltar desfaz)"
+  ok "atualizar: cria uma cópia do sistema antes de atualizar (atualizar --voltar desfaz)"
 else
-  info "atualizar: sistema em UFS, atualiza sem cópia (o desfazer precisa de ZFS)"
+  aviso "atualizar: sistema em UFS, atualiza sem cópia (o desfazer precisa de ZFS)"
 fi
 
 # ---------- devdb: bancos de desenvolvimento em jails ----------
 if [ $DEV -eq 1 ]; then
   install -m 755 "$RAIZ/extras/bin/devdb" /usr/local/bin/devdb
   sysrc -q bastille_enable=YES >/dev/null     # as jails dos bancos voltam sozinhas no boot
-  info "devdb: 'devdb criar postgres' (ou mysql, valkey, mongo) sobe o banco numa jail"
+  ok "devdb pronto: 'devdb criar postgres' (ou mysql, valkey, mongo) sobe o banco numa jail"
 fi
 
 # Sem GPU (vesa/scfb) o OpenGL é por software e o picom com glx inverte
 # vermelho/azul nas janelas transparentes (rofi). O xrender evita isso.
 if [ "$VIDEO" = 1 ] || [ "$VIDEO" = 2 ]; then
   sed -i '' 's/^backend = "glx";/backend = "xrender";/' "$CASA/.config/bspwm/config/picom/picom.conf"
-  info "picom: backend xrender (sem aceleração de vídeo)"
+  ok "picom: backend xrender (sem aceleração de vídeo)"
 fi
 
 chown -R "$USUARIO:$GRUPO" "$CASA/.config" "$CASA/.xinitrc" "$CASA/.gtkrc-2.0" "$CASA/.icons"
@@ -458,10 +648,15 @@ chown -R "$USUARIO:$GRUPO" "$CASA/.config" "$CASA/.xinitrc" "$CASA/.gtkrc-2.0" "
 [ -d "$BACKUP" ] && chown -R "$USUARIO:$GRUPO" "$BACKUP"
 
 # ---------- fim ----------
-titulo "Pronto"
-[ -n "$FALHARAM" ] && cor '1;33' "    pacotes que falharam (veja $LOG):$FALHARAM"
+titulo "Instalação concluída"
+if [ -n "$FALHARAM" ]; then
+  aviso "pacotes com falha (veja $LOG):"
+  for p in $FALHARAM; do printf '      - %s\n' "$p"; done
+else
+  ok "todos os pacotes instalados"
+fi
 if [ "$VIDEO" = 3 ] || [ "$VIDEO" = 4 ]; then
-  info "o driver de vídeo é carregado no boot: reinicie com 'reboot'"
+  info "driver de vídeo configurado para carregar no boot"
 fi
 if [ "$LOGIN" = 1 ]; then
   info "reinicie com 'reboot' e a tela de login abre sozinha"
@@ -470,5 +665,9 @@ elif [ $AUTOX -eq 1 ]; then
 else
   info "entre como '$USUARIO' e rode: startx"
 fi
-info "atalhos: super+Return (terminal), super+@space (menu), alt+F1 (ajuda)"
+info "atalhos: super+Return (terminal), super+espaço (menu), alt+F1 (ajuda)"
 info "apps: super+b Firefox, super+f PCManFM, nvim (AstroNvim)"
+_DUR=$(( $(date +%s) - INICIO ))
+printf '\n  %s─────────────────────────────────────────────────────────────────%s\n' "$C_DIM" "$C_RST"
+printf '  %slog:%s %s\n' "$C_DIM" "$C_RST" "$LOG"
+printf '  %stempo total:%s %d min %d s\n' "$C_DIM" "$C_RST" "$((_DUR / 60))" "$((_DUR % 60))"
