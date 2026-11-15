@@ -90,15 +90,11 @@ repetir a configuração manual a cada instalação.
 | Instalador | um único `install.sh` POSIX `sh` |
 | Licença | GPL-3.0 |
 
-**Estado:** capturas de desktop feitas em VM QEMU (1920x1080, sem aceleração de
-vídeo); a prévia do instalador é uma renderização da saída ANSI do próprio
-script. O projeto não possui suíte de testes automatizada; a verificação é feita
-pelo log do instalador, pela checagem de checksums e pelo teste manual em VM.
+**Estado:** capturas feitas em VM QEMU (1920x1080, sem aceleração de vídeo). O
+projeto não possui suíte de testes automatizada; a verificação é feita pelo log
+do instalador, pela checagem de checksums e pelo teste manual em VM.
 
 ## Capturas
-
-**Instalador** (prévia da interface, renderizada a partir do próprio script)
-![Instalador](docs/screenshots/installer-v1.png)
 
 **Tela de login** (LightDM com o tema `AurTTY-Login`)
 ![Tela de login](docs/screenshots/login-v2.png)
