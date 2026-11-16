@@ -51,8 +51,11 @@ awk '
 chmod +x "$B/bspwmrc"
 
 # bar07: tira módulos sem suporte no FreeBSD (bateria/bluetooth via sysfs, updates do pacman, player do eww)
-sed -i 's/^modules-right = .*/modules-right = mpd sep bi network bd sep bi pulseaudio bd sep bi date bd sep tray sep power/' \
+# e os de música (mpd/mpd_control): o mpd não é instalado e a barra mostrava "No Music" o tempo todo
+sed -i 's/^modules-right = .*/modules-right = bi network bd sep bi pulseaudio bd sep bi date bd sep tray sep power/' \
   "$B/bars/bar07/config.ini"
+sed -i 's/^\(modules-left = .*\)bi mpd_control bd sep /\1/' "$B/bars/bar07/config.ini"
+grep -q mpd_control "$B/bars/bar07/config.ini" && { echo "bar07: mpd_control continua na barra" >&2; exit 1; }
 
 # bar07: internal/fs e internal/network não funcionam no FreeBSD -> custom/script
 # (mantém os ícones e cores originais, só troca a fonte dos dados)
@@ -72,18 +75,49 @@ awk '
   { print }
 ' "$B/bars/bar07/modules.ini" > "$B/bars/bar07/modules.ini.new" && mv "$B/bars/bar07/modules.ini.new" "$B/bars/bar07/modules.ini"
 
-# Launcher da barra: logo do ArchBSD (fonte própria AurTTY Icons, U+E000) em vermelho
-# área de trabalho ativa: logo do FreeBSD (glifo nf-linux-freebsd U+F30C da JetBrainsMono Nerd Font) no lugar do pacman
-sed -i 's/^font-4 = .*/&\nfont-5 = "AurTTY Icons:size=15;4"\nfont-6 = "JetBrainsMono Nerd Font Propo:size=11;3"/' "$B/bars/bar07/config.ini"
+# relógio em 24h; clique abre o calendário (gsimplecal, abre na posição do mouse)
+awk '
+  /^\[module\// { sec = $0 }
+  sec == "[module/date]" && /^time = / { print "time = %H:%M"; next }
+  sec == "[module/date]" && /^date-alt = / { next }
+  sec == "[module/date]" && /^format = / { print "format = %{A1:gsimplecal:}<label>%{A}"; next }
+  { print }
+' "$B/bars/bar07/modules.ini" > "$B/bars/bar07/modules.ini.new" && mv "$B/bars/bar07/modules.ini.new" "$B/bars/bar07/modules.ini"
+
+# calendário do relógio flutuando (senão o bspwm o coloca lado a lado com as janelas)
+awk '
+  /^    pavucontrol\)/ { print "    Gsimplecal)"; print "        result \"state=floating sticky=on\""; print "        ;;" }
+  { print }
+' "$B/bin/ExternalRules" > "$B/bin/ExternalRules.new" && mv "$B/bin/ExternalRules.new" "$B/bin/ExternalRules"
+chmod +x "$B/bin/ExternalRules"
+grep -q Gsimplecal "$B/bin/ExternalRules" || { echo "ExternalRules: regra do calendário não aplicada" >&2; exit 1; }
+
+# Launcher da barra: buraco negro (fonte própria AurTTY Icons, U+E000) em vermelho
+# áreas de trabalho com ícone por função, seguindo o ExternalRules do tema
+# (1 terminal, 2 arquivos/Thunar, 3 web/Firefox, 4 chat/Telegram, 5 código, 6 música);
+# a ativa fica destacada na cor do tema, as ocupadas em azul e as vazias apagadas
+sed -i 's/^font-4 = .*/&\nfont-5 = "AurTTY Icons:size=18;5"\nfont-6 = "JetBrainsMono Nerd Font Propo:size=11;3"/' "$B/bars/bar07/config.ini"
 awk '
   /^\[module\// { sec = $0 }
   sec == "[module/launcher]" && /^label = / { print "label = \xee\x80\x80"; next }
   sec == "[module/launcher]" && /^label-font = / { print "label-font = 6"; next }
-  sec == "[module/bspwm]" && /^label-focused = / { print "label-focused = \xef\x8c\x8c"; print "label-focused-font = 7"; next }
+  sec == "[module/bspwm]" && /^occupied-scroll = / {
+    print
+    print "ws-icon-0 = 1;\xf3\xb0\x86\x8d"
+    print "ws-icon-1 = 2;\xf3\xb0\x89\x8b"
+    print "ws-icon-2 = 3;\xf3\xb0\x88\xb9"
+    print "ws-icon-3 = 4;\xf3\xb0\x8d\xa9"
+    print "ws-icon-4 = 5;\xf3\xb0\x85\xa9"
+    print "ws-icon-5 = 6;\xf3\xb0\x9d\x9a"
+    print "ws-icon-default = \xf3\xb0\x8a\xa0"
+    next
+  }
+  sec == "[module/bspwm]" && /^label-(focused|occupied|urgent|empty) = / { sub(/=.*/, "= %icon%"); print; split($1, k, "-"); print "label-" k[2] "-font = 7"; next }
   sec == "[module/bspwm]" && /^label-focused-foreground = / { print "label-focused-foreground = ${color.blue-arch}"; next }
+  sec == "[module/bspwm]" && /^label-empty-foreground = / { print "label-empty-foreground = ${color.black-bright}"; next }
   { print }
 ' "$B/bars/bar07/modules.ini" > "$B/bars/bar07/modules.ini.new" && mv "$B/bars/bar07/modules.ini.new" "$B/bars/bar07/modules.ini"
-sed -i 's/^arch_icon=.*/arch_icon="#e8303a"   # logo ArchBSD/' "$B/rices/emilia/theme-config.bash"
+sed -i 's/^arch_icon=.*/arch_icon="#e8303a"   # ícone AurTTY (buraco negro)/' "$B/rices/emilia/theme-config.bash"
 # terminal levemente transparente (o Theme.sh aplica no alacritty.toml)
 sed -i 's/^P_TERM_OPACITY=.*/P_TERM_OPACITY="0.8"\t# Terminal transparency. Range: 0.1 - 1.0 (1.0 = disabled)/' "$B/rices/emilia/theme-config.bash"
 
@@ -110,6 +144,11 @@ awk '
   { print }
 ' "$B/bin/Theme.sh" > "$B/bin/Theme.sh.new" && mv "$B/bin/Theme.sh.new" "$B/bin/Theme.sh"
 chmod +x "$B/bin/Theme.sh"
+
+# PowerMenu: um clique executa a opção (no rofi o padrão é clique duplo, e o
+# clique simples só selecionava: "clica e nada acontece")
+sed -i 's|^\trofi -dmenu \\$|\trofi -dmenu -me-select-entry "" -me-accept-entry MousePrimary \\|' "$B/bin/PowerMenu"
+grep -q 'me-accept-entry MousePrimary' "$B/bin/PowerMenu" || { echo "PowerMenu: regra do clique não aplicada" >&2; exit 1; }
 
 # --- outros programas ---
 for d in alacritty dunst jgmenu clipcat gtk-3.0; do

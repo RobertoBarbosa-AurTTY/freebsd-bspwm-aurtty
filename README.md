@@ -125,7 +125,7 @@ FreeBSD 14/15 (ZFS ou UFS)
 │           ├── rofi / jgmenu    launcher e menu de aplicativos
 │           ├── dunst / clipcat  notificações e histórico de clipboard
 │           ├── alacritty        bash + oh-my-bash + ble.sh + fzf-tab
-│           └── aplicativos      Firefox, PCManFM, AstroNvim
+│           └── aplicativos      Firefox, Thunar, AstroNvim
 │
 └── Bastille (jails "thin")
     └── devdb-<banco>            PostgreSQL | MariaDB | Valkey | MongoDB
@@ -231,7 +231,8 @@ reboot                                      # carregar driver de vídeo / LightD
 | Utilitários | feh, xsettingsd, xdo, xdotool, maim, xclip, jq, ImageMagick7 |
 | Áudio | pulseaudio, pavucontrol, pamixer, playerctl |
 | Bloqueio de tela | i3lock-color |
-| Navegador e arquivos | Firefox (`super+b`), PCManFM (`super+f`) |
+| Navegador e arquivos | Firefox (`super+b`, tema escuro e sem patrocinados por política), Thunar (`super+f`) |
+| Calendário | gsimplecal (clique no relógio da barra) |
 
 ### Terminal
 
@@ -289,19 +290,30 @@ início do `PATH` da sessão bspwm e evitam alterar o sistema:
 - Wallpapers próprios (`extras/walls/`, gerados por `tools/gerar-wallpapers.py`):
   **FreeBSD dark** (padrão) e uma homenagem ao ArchBSD/PacBSD. Os do Emilia
   continuam disponíveis no seletor (`super + alt + w`).
+- Barra: relógio em 24h (clique abre o calendário logo abaixo), áreas de
+  trabalho com ícone por função (1 terminal, 2 arquivos, 3 web, 4 chat,
+  5 código, 6 música; a ativa em vermelho) e sem os módulos de música (o mpd
+  não é instalado).
+- Menu de apps (rofi) só com o que se usa: demos do GTK, xterm e utilitários
+  ficam escondidos (`~/.local/share/applications/*.desktop` com `NoDisplay`).
+- Sessão sempre em inglês (`LANG=en_US.UTF-8`); pastas padrão da home criadas
+  com `xdg-user-dirs`.
 - Paleta opcional de **fogo** para a barra (`extras/polybar/fogo.ini`),
   desligada por padrão. Para ativar, troque
   `include-file = ../colors.ini` por `include-file = fogo.ini` em
   `~/.config/bspwm/bars/bar07/config.ini`.
 - Área de trabalho ativa com o logo do FreeBSD (glifo `nf-linux-freebsd`) e
-  launcher com o diabinho do ArchBSD (`extras/fonts/AurTTYIcons.otf`, gerado por
-  `tools/gerar-icone-archbsd.py`).
+  launcher com um buraco negro (anel e disco de acreção)
+  (`extras/fonts/AurTTYIcons.otf`, gerado por `tools/gerar-icone-aurtty.py`).
+- Menu de energia da barra (bloquear, suspender, sair, reiniciar, desligar)
+  funcionando com um clique: o `systemctl` dos scripts vira um shim que chama o
+  ConsoleKit2 (`freebsd-bin/systemctl`).
 
 ### Tela de login (opcional, padrão)
 
 LightDM com o tema próprio `AurTTY-Login` (`extras/lightdm/gtk.css`, sobre o
 TokyoNight-zk): cartão translúcido arredondado, campos e botão no azul do Emilia,
-avatar redondo com o diabinho do ArchBSD (`extras/lightdm/avatar.png`), wallpaper
+avatar redondo com um buraco negro (`extras/lightdm/avatar.png`, da arte em `extras/arte/`), wallpaper
 FreeBSD dark e a sessão `bspwm (AurTTY)`.
 
 - Config: `/usr/local/etc/lightdm/lightdm-gtk-greeter.conf`
@@ -402,7 +414,7 @@ mão.
 | `super + Return` | terminal |
 | `super + space` | lançador (rofi) |
 | `super + b` | Firefox |
-| `super + f` | PCManFM |
+| `super + f` | Thunar |
 | `alt + F1` | lista de atalhos |
 | `super + 1..9` | áreas de trabalho |
 | `super + x` | fechar janela |
@@ -430,7 +442,7 @@ freebsd-bspwm-aurtty/
 ├── freebsd-bin/               # shims FreeBSD para scripts do tema
 ├── tools/
 │   ├── gerar-wallpapers.py
-│   ├── gerar-icone-archbsd.py
+│   ├── gerar-icone-aurtty.py
 │   └── sincronizar-upstream.sh
 └── docs/screenshots/
 ```
@@ -467,7 +479,7 @@ Outras ferramentas:
 
 ```sh
 tools/gerar-wallpapers.py        # regenera os wallpapers próprios
-tools/gerar-icone-archbsd.py     # regenera a fonte de ícones do launcher
+tools/gerar-icone-aurtty.py      # regenera a fonte de ícones do launcher
 ```
 
 **Contribuições são bem-vindas.** Para enviar uma mudança:
@@ -497,10 +509,12 @@ Abra issues para bugs, sugestões e dúvidas de uso.
 - Paleta opcional de **fogo** para a barra (`extras/polybar/fogo.ini`),
   desligada por padrão.
 - Área de trabalho ativa: logo do **FreeBSD** no lugar do pacman.
-- Ícone do launcher: releitura do logo do **ArchBSD** numa fonte própria
-  (`extras/fonts/AurTTYIcons.otf`).
+- Ícone do launcher: buraco negro numa fonte própria
+  (`extras/fonts/AurTTYIcons.otf`, U+E000; o diabinho do ArchBSD fica em U+E001
+  para o wallpaper de homenagem).
 - `freebsd-bin/`: shims para os scripts do tema que esperam ferramentas
-  GNU/Linux (`sed`, `date`, `stat`, `shuf`, `pidof`, `ip route`).
+  GNU/Linux (`sed`, `date`, `stat`, `shuf`, `pidof`, `ip route`, `uptime -p`
+  e `systemctl poweroff/reboot/suspend` via ConsoleKit2).
 - Sem Docker: bancos de desenvolvimento rodam em jails via `devdb`.
 - Atualização com rollback por boot environments do ZFS (`atualizar`).
 
@@ -513,8 +527,10 @@ GPL-3.0. Os arquivos copiados de lá ficam em `dotfiles/` com os cabeçalhos
 originais; as adaptações para FreeBSD são aplicadas por
 `tools/sincronizar-upstream.sh`.
 
-- Ícone do launcher: releitura do logo do ArchBSD/PacBSD sobre o glifo `arch` do
-  Material Design Icons (Apache-2.0).
+- Ícone do launcher (buraco negro): desenho próprio do projeto, GPL-3.0. A arte
+  do avatar (`extras/arte/buraco-negro.webp`) foi fornecida pelo mantenedor.
+- Glifo de homenagem ao ArchBSD/PacBSD (U+E001, wallpaper `aurtty-pacbsd`):
+  releitura sobre o glifo `arch` do Material Design Icons (Apache-2.0).
 - Fontes: JetBrainsMono Nerd Font, FontAwesome e Material Design Icons.
 - oh-my-bash, ble.sh, fzf-tab-completion e AstroNvim pertencem aos seus
   respectivos autores.

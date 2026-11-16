@@ -1,7 +1,8 @@
 """Gera os wallpapers do freebsd-bspwm-aurtty em extras/walls/ (2560x1440, webp).
 
   aurtty-freebsd-dark.webp   logo do FreeBSD (glifo nf-linux-freebsd) em brasa
-  aurtty-pacbsd.webp         homenagem ao ArchBSD/PacBSD (glifo AurTTY Icons U+E000)
+  aurtty-pacbsd.webp         homenagem ao ArchBSD/PacBSD (glifo AurTTY Icons U+E001)
+  ../lightdm/avatar.png      avatar da tela de login (extras/arte/buraco-negro.webp)
 
 Requer: pip install pillow
 Uso: python tools/gerar-wallpapers.py <JetBrainsMonoNerdFontPropo-Regular.ttf> \
@@ -119,7 +120,7 @@ for j, y in enumerate(range(-passo, H + passo, passo)):
 img = ImageChops.add(img, trama)
 
 logo = ImageFont.truetype(AURTTY, 620)
-ARCHBSD = ""
+ARCHBSD = "\ue001"   # glifo do ArchBSD na AurTTY Icons
 img = brilho(img, lambda d: glifo_centro(d, cx, cy, ARCHBSD, logo, (150, 18, 8)), 90, 1.3)
 img = brilho(img, lambda d: glifo_centro(d, cx, cy, ARCHBSD, logo, (255, 70, 20)), 26, 0.7)
 img = fagulhas(img, 13, 260, (0, int(H * 0.3), W, H))
@@ -133,33 +134,15 @@ texto_centro(d, cx, int(H * 0.72) + 108, "em memória do ArchBSD", sub, (190, 14
 texto_centro(d, cx, int(H * 0.72) + 160, "pacman  +  kernel FreeBSD", mono, (120, 80, 68), espaco=3)
 salvar(img, "aurtty-pacbsd.webp")
 
-# ---------- 3) Avatar da tela de login (círculo com o glifo ArchBSD) ----------
-# Sai em <SAIDA>/../lightdm/avatar.png (ex.: extras/lightdm/avatar.png)
-T = 512                                   # desenha em 2x e reduz (bordas suaves)
-av = Image.new("RGBA", (T, T), (0, 0, 0, 0))
-anel = Image.new("RGBA", (T, T), (0, 0, 0, 0))
-da = ImageDraw.Draw(anel)
-AZUL, ROXO = (122, 162, 247), (187, 154, 247)
-for i in range(360):                       # anel em degradê azul -> roxo -> azul
-    k = (math.cos(math.radians(i)) + 1) / 2
-    cor = tuple(int(AZUL[c] * k + ROXO[c] * (1 - k)) for c in range(3)) + (255,)
-    da.pieslice((8, 8, T - 8, T - 8), i - 90, i - 89, fill=cor)
-da.ellipse((30, 30, T - 30, T - 30), fill=(0, 0, 0, 0))
-av = Image.alpha_composite(av, anel)
-miolo = Image.new("RGBA", (T, T), (0, 0, 0, 0))
-ImageDraw.Draw(miolo).ellipse((34, 34, T - 34, T - 34), fill=(26, 27, 38, 255))
-av = Image.alpha_composite(av, miolo)
-
-fonte_av = ImageFont.truetype(AURTTY, 250)
-cx = cy = T // 2
-glow = Image.new("RGBA", (T, T), (0, 0, 0, 0))
-ImageDraw.Draw(glow).text((cx, cy + 8), ARCHBSD, font=fonte_av, fill=(255, 60, 30, 200), anchor="mm")
-glow = glow.filter(ImageFilter.GaussianBlur(14))
-mascara = Image.new("L", (T, T), 0)
-ImageDraw.Draw(mascara).ellipse((34, 34, T - 34, T - 34), fill=255)
-glow.putalpha(ImageChops.multiply(glow.getchannel("A"), mascara))
-av = Image.alpha_composite(av, glow)
-ImageDraw.Draw(av).text((cx, cy + 8), ARCHBSD, font=fonte_av, fill=VERMELHO + (255,), anchor="mm")
+# ---------- 3) Avatar da tela de login (buraco negro) ----------
+# Sai em <SAIDA>/../lightdm/avatar.png (ex.: extras/lightdm/avatar.png): a arte
+# extras/arte/buraco-negro.webp recortada no anel azul, com o fundo transparente.
+arte = Image.open(os.path.join(os.path.dirname(os.path.abspath(SAIDA)), "arte", "buraco-negro.webp")).convert("RGBA")
+ACX, ACY, AR = 627, 613, 516              # centro e raio do anel azul na arte (1254x1254)
+av = arte.crop((ACX - AR, ACY - AR, ACX + AR, ACY + AR)).resize((512, 512), Image.LANCZOS)
+mascara = Image.new("L", (512, 512), 0)
+ImageDraw.Draw(mascara).ellipse((2, 2, 509, 509), fill=255)
+av.putalpha(mascara)
 av = av.resize((256, 256), Image.LANCZOS)
 destino = os.path.join(os.path.dirname(os.path.abspath(SAIDA)), "lightdm", "avatar.png")
 os.makedirs(os.path.dirname(destino), exist_ok=True)

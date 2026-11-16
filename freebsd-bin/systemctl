@@ -1,0 +1,18 @@
+#!/bin/sh
+# systemctl mínimo para os scripts do tema (PowerMenu, atalhos do sxhkd):
+# desligar, reiniciar e suspender pelo ConsoleKit2 via D-Bus. O usuário pode
+# porque o instalador libera org.freedesktop.consolekit.system.* para
+# wheel/operator (polkit, 50-aurtty-energia.rules).
+ck() {
+  dbus-send --system --print-reply --dest=org.freedesktop.ConsoleKit \
+    /org/freedesktop/ConsoleKit/Manager "org.freedesktop.ConsoleKit.Manager.$1" boolean:true >/dev/null
+}
+case ${1:-} in
+  poweroff) ck PowerOff ;;
+  reboot) ck Reboot ;;
+  suspend) ck Suspend ;;
+  hibernate) ck Hibernate ;;
+  *)
+    echo "systemctl: '${1:-}' não existe no FreeBSD (use service e sysrc)" >&2
+    exit 1 ;;
+esac

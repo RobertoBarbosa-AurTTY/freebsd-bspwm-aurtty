@@ -32,7 +32,7 @@ PACOTES="xorg bspwm sxhkd polybar picom rofi dunst alacritty feh xsettingsd jgme
 xdo xdotool jq ImageMagick7 maim xclip pamixer playerctl pavucontrol pulseaudio
 i3lock-color webp webp-pixbuf-loader bash gsed coreutils git curl dbus jetbrains-mono noto-basic
 papirus-icon-theme eza zoxide fzf bat gawk gnugrep fastfetch python3
-firefox pcmanfm neovim ripgrep fd-find"
+firefox thunar thunar-archive-plugin gsimplecal xdg-user-dirs neovim ripgrep fd-find"
 
 # ferramentas de desenvolvimento backend (opcional). Os py3xx-* entram depois,
 # com a versão do python padrão do repositório. Sem Docker no FreeBSD.
@@ -247,7 +247,7 @@ baixar_verificado() { # url sha256 destino [nome na tela]
 if [ "$UI" = dialog ]; then
   dlg "Bem-vindo" --yes-label Começar --no-label Sair --yesno \
 "Este instalador transforma o FreeBSD num ambiente de desenvolvimento com o bspwm e o tema Emilia.\n\n\
-Instala o Xorg, bspwm, polybar, picom, rofi, alacritty, Firefox, PCManFM e Neovim (AstroNvim), com temas, ícones e fontes.\n\n\
+Instala o Xorg, bspwm, polybar, picom, rofi, alacritty, Firefox, Thunar e Neovim (AstroNvim), com temas, ícones e fontes.\n\n\
 Nada muda no sistema até você confirmar o resumo.\n\
 Setas e Tab navegam, Espaço marca, Enter confirma." 0 "$LARG" || sair_se_quiser
 else
@@ -525,13 +525,46 @@ mkdir -p "$CASA/.config/nvim"
 tar -xf "$TMP/astronvim.tar.gz" -C "$CASA/.config/nvim" --strip-components 1
 info "config em ~/.config/nvim; o 'nvim' instala os plugins na primeira execução"
 
+# calendário do relógio da barra (gsimplecal)
+mkdir -p "$CASA/.config/gsimplecal"
+install -m 644 "$RAIZ/extras/gsimplecal/config" "$CASA/.config/gsimplecal/config"
+
+# pastas padrão na home (Desktop, Documents, Downloads, Pictures...), em inglês
+su -m "$USUARIO" -c "HOME='$CASA' LANG=en_US.UTF-8 xdg-user-dirs-update" 2>/dev/null || true
+
+# Thunar como gerenciador de arquivos padrão (pastas abrem nele)
+if ! grep -qs '^inode/directory=' "$CASA/.config/mimeapps.list"; then
+  grep -qs '^\[Default Applications\]' "$CASA/.config/mimeapps.list" ||
+    printf '[Default Applications]\n' >> "$CASA/.config/mimeapps.list"
+  printf 'inode/directory=thunar.desktop\n' >> "$CASA/.config/mimeapps.list"
+fi
+
+# menu de apps (rofi) só com o que se usa: esconde demos do GTK, xterm e utilitários
+mkdir -p "$CASA/.local/share/applications"
+for app in gtk3-demo gtk3-icon-browser gtk3-widget-factory org.gtk.Demo4 org.gtk.PrintEditor4 \
+  org.gtk.WidgetFactory4 org.gtk.gtk4.NodeEditor org.gtk.IconBrowser4 xterm uxterm jgmenu picom feh \
+  rofi rofi-theme-selector thunar-bulk-rename thunar-settings; do
+  cat > "$CASA/.local/share/applications/$app.desktop" <<EOF2
+[Desktop Entry]
+# gerado pelo freebsd-bspwm-aurtty: esconde do menu de apps
+Type=Application
+Name=$app
+NoDisplay=true
+EOF2
+done
+chown -R "$USUARIO:$GRUPO" "$CASA/.local"
+
+# Firefox com o tema escuro (o usuário pode trocar; é só o padrão)
+mkdir -p /usr/local/lib/firefox/distribution
+install -m 644 "$RAIZ/extras/firefox/policies.json" /usr/local/lib/firefox/distribution/policies.json
+
 cat > "$CASA/.xinitrc" <<'EOF'
 #!/bin/sh
 # gerado pelo freebsd-bspwm-aurtty
-export LANG=${LANG:-pt_BR.UTF-8}
+export LANG=en_US.UTF-8
 export XDG_CURRENT_DESKTOP=bspwm
 export BROWSER=firefox
-export FILEMANAGER=pcmanfm
+export FILEMANAGER=thunar
 exec dbus-launch --exit-with-session bspwm
 EOF
 
@@ -572,10 +605,10 @@ if [ "$LOGIN" = 1 ]; then
   cat > /usr/local/bin/aurtty-session <<'EOF'
 #!/bin/sh
 # freebsd-bspwm-aurtty: sessão bspwm aberta pela tela de login
-export LANG=${LANG:-pt_BR.UTF-8}
+export LANG=en_US.UTF-8
 export XDG_CURRENT_DESKTOP=bspwm
 export BROWSER=firefox
-export FILEMANAGER=pcmanfm
+export FILEMANAGER=thunar
 exec dbus-launch --exit-with-session bspwm
 EOF
   chmod 755 /usr/local/bin/aurtty-session
@@ -734,7 +767,7 @@ elif [ $AUTOX -eq 1 ]; then
 else
   FIM="$FIM\n\nEntre como '$USUARIO' e rode: startx"
 fi
-FIM="$FIM\n\nAtalhos: super+Enter terminal, super+Espaço menu, alt+F1 ajuda\nApps: super+b Firefox, super+f PCManFM, nvim (AstroNvim)\nLog: $LOG"
+FIM="$FIM\n\nAtalhos: super+Enter terminal, super+Espaço menu, alt+F1 ajuda\nApps: super+b Firefox, super+f Thunar, nvim (AstroNvim)\nLog: $LOG"
 
 INSTALANDO=0
 exec 1>&3 2>&4

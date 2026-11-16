@@ -44,6 +44,9 @@ case "$class" in
     TelegramDesktop)
         result "desktop=^4 follow=on"
         ;;
+    Gsimplecal)
+        result "state=floating sticky=on"
+        ;;
     pavucontrol)
         result "state=floating center=on"
         ;;

@@ -38,7 +38,7 @@ grey="#9098b5"
 bluegray="#6D8895"
 
 accent_color="#222330"
-arch_icon="#e8303a"   # logo ArchBSD
+arch_icon="#e8303a"   # ícone AurTTY (buraco negro)
 
 # Bar
 main_bar="bar07"

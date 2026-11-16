@@ -1,0 +1,16 @@
+#!/bin/sh
+# uptime do FreeBSD + "-p" do Linux ("up 2 hours, 5 minutes"), usado pelo PowerMenu
+[ "${1:-}" = -p ] || exec /usr/bin/uptime "$@"
+boot=$(sysctl -n kern.boottime | sed 's/^{ sec = \([0-9]*\),.*/\1/')
+s=$(( $(date +%s) - boot ))
+d=$((s / 86400)); h=$((s % 86400 / 3600)); m=$((s % 3600 / 60))
+out=""
+parte() { # parte n singular plural
+  [ "$1" -gt 0 ] || return 0
+  if [ "$1" -eq 1 ]; then p="$1 $2"; else p="$1 $3"; fi
+  if [ -n "$out" ]; then out="$out, $p"; else out=$p; fi
+}
+parte "$d" day days
+parte "$h" hour hours
+parte "$m" minute minutes
+echo "up ${out:-0 minutes}"

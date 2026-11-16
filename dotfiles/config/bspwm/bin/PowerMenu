@@ -18,7 +18,7 @@ _options="󰍁|Lock
 󰐥|Poweroff"
 
 rofi_cmd() {
-	rofi -dmenu \
+	rofi -dmenu -me-select-entry "" -me-accept-entry MousePrimary \
 		-p "Goodbye ${USER}" \
 		-mesg "Uptime: $(uptime -p | sed -e 's/up //g')" \
 		-theme "$HOME"/.config/bspwm/config/rofi-themes/PowerMenu.rasi
