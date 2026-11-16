@@ -1,0 +1,50 @@
+#!/bin/sh
+# freebsd-bspwm-aurtty: menu de rede aberto pelo clique no módulo de rede da barra.
+# Mostra a conexão (cabo/Wi-Fi, IP, gateway, firewall) e abre as ferramentas:
+# tráfego por programa (bandwhich), latência (gping), conexões (sockstat),
+# firewall ao vivo (pftop), regras/estatísticas e liga/desliga o pf.
+# O que precisa de root roda com doas (pede a senha).
+TEMA="$HOME/.config/bspwm/config/rofi-themes/NetManagerDM.rasi"
+
+IFACE=$(route -n get default 2>/dev/null | awk '/interface:/ {print $2}')
+GW=$(route -n get default 2>/dev/null | awk '/gateway:/ {print $2}')
+if [ -n "$IFACE" ]; then
+  IP=$(ifconfig "$IFACE" inet 2>/dev/null | awk '/inet / {print $2; exit}')
+  case $IFACE in
+    wlan*) TIPO="Wi-Fi ($(ifconfig "$IFACE" | awk '/ssid/ {print $2; exit}'))" ;;
+    *)     TIPO="Wired ($(ifconfig "$IFACE" | awk -F': ' '/media:/ {print $2; exit}'))" ;;
+  esac
+  CONEXAO="$TIPO  ·  $IFACE  ·  ${IP:-no IPv4}  ·  gateway ${GW:-?}"
+else
+  CONEXAO="Offline (no default route)"
+fi
+
+# firewall: ver se está ligado agora precisa de root; aqui mostra se liga no boot
+if [ "$(sysrc -n pf_enable 2>/dev/null)" = YES ]; then FW="on at boot"; else FW="off at boot"; fi
+
+escolha=$(printf '%s\n' \
+  "󰓅  Latency (gateway + internet)" \
+  "󰈀  Traffic by app" \
+  "󰛳  Open connections" \
+  "󰒃  Firewall live (pftop)" \
+  "󰒓  Firewall rules and stats" \
+  "󰒘  Firewall ON" \
+  "󰒙  Firewall OFF" |
+  rofi -dmenu -i -p "Network" -mesg "$CONEXAO   ·   firewall $FW" -theme "$TEMA" \
+    -me-select-entry '' -me-accept-entry MousePrimary)
+
+case $escolha in
+  *Latency*)
+    alvos="1.1.1.1"; [ -n "$GW" ] && alvos="$GW 1.1.1.1"
+    # shellcheck disable=SC2086
+    aurtty-painel gping $alvos ;;
+  *"Traffic by app"*)  aurtty-painel doas bandwhich ;;
+  *"Open connections"*) aurtty-painel sh -c 'sockstat -46c -w | less -S' ;;
+  *"Firewall live"*)    aurtty-painel doas pftop ;;
+  *"rules and stats"*)
+    aurtty-painel sh -c 'doas sh -c "echo \"== status ==\"; pfctl -s info; echo; echo \"== rules ==\"; pfctl -s rules; echo; echo \"== blocked (last 50, pflog0) ==\"; tcpdump -n -e -ttt -r /var/log/pflog 2>/dev/null | tail -50" | less -S' ;;
+  *"Firewall OFF"*)
+    aurtty-painel sh -c 'doas pfctl -d && notify-send "Firewall" "pf is OFF until you turn it on again or reboot" ; sleep 1' ;;
+  *"Firewall ON"*)
+    aurtty-painel sh -c 'doas sh -c "kldload -n pf && pfctl -f /etc/pf.conf && pfctl -e" && notify-send "Firewall" "pf is ON" ; sleep 1' ;;
+esac

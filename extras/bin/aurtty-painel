@@ -1,0 +1,14 @@
+#!/bin/sh
+# freebsd-bspwm-aurtty: abre ferramentas do sistema numa janela flutuante
+# (classe AurTTY-Panel, centralizada pelo ExternalRules do bspwm).
+# Uso: aurtty-painel ram | disco | <comando> [args...]
+#   ram    btop (processos por memória; k encerra o selecionado)
+#   disco  gdu (discos e pastas que mais ocupam; d apaga)
+case ${1:-} in
+  ram)   set -- btop ;;
+  disco) set -- gdu -d ;;
+  "")    echo "uso: aurtty-painel ram | disco | <comando>" >&2; exit 1 ;;
+esac
+
+# a janela fica aberta se o comando terminar com erro (para dar tempo de ler)
+exec alacritty --class AurTTY-Panel -T "$*" -e sh -c '"$@" || { echo; printf "Press Enter to close"; read -r _; }' sh "$@"

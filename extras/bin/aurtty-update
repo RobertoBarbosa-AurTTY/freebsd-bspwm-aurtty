@@ -1,0 +1,28 @@
+#!/bin/sh
+# freebsd-bspwm-aurtty: atualiza uma instalação existente.
+# Baixa a versão nova do repositório (git pull) e roda install.sh --atualizar,
+# que reaplica configs, temas, scripts e pacotes novos com as respostas salvas.
+# Uso (como root): aurtty-update
+set -eu
+CONF=/usr/local/etc/freebsd-bspwm-aurtty.conf
+
+[ "$(id -u)" -eq 0 ] || { echo "rode como root (su -)" >&2; exit 1; }
+[ -r "$CONF" ] || { echo "não achei $CONF: rode o install.sh da pasta do repositório" >&2; exit 1; }
+
+RAIZ=$(awk -F= '$1 == "RAIZ" { gsub(/\047/, "", $2); print $2 }' "$CONF")
+[ -d "$RAIZ/.git" ] || { echo "repositório não encontrado em '$RAIZ' (clone de novo e rode sh install.sh --atualizar)" >&2; exit 1; }
+
+cd "$RAIZ"
+ANTES=$(git rev-parse HEAD)
+echo ">> baixando a versão nova em $RAIZ"
+if ! git pull --ff-only; then
+  echo "git pull falhou: há mudanças locais na pasta? (git status)" >&2
+  exit 1
+fi
+if [ "$(git rev-parse HEAD)" = "$ANTES" ]; then
+  echo ">> já estava na versão mais nova; reaplicando mesmo assim"
+else
+  echo ">> novidades:"
+  git log --oneline "$ANTES..HEAD"
+fi
+exec sh "$RAIZ/install.sh" --atualizar

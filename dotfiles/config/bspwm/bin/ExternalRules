@@ -47,6 +47,9 @@ case "$class" in
     Gsimplecal)
         result "state=floating sticky=on"
         ;;
+    AurTTY-Panel)
+        result "state=floating center=on rectangle=1280x760+0+0"
+        ;;
     pavucontrol)
         result "state=floating center=on"
         ;;

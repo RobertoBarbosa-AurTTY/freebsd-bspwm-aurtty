@@ -5,11 +5,35 @@
 # Uso, como root, num FreeBSD recém-instalado:
 #   pkg install -y git && git clone https://github.com/RobertoBarbosa-AurTTY/freebsd-bspwm-aurtty
 #   cd freebsd-bspwm-aurtty && sh install.sh
+#
+# Atualizar uma instalação existente (reaproveita as respostas salvas):
+#   aurtty-update                 # git pull + sh install.sh --atualizar
+#   sh install.sh --atualizar     # só reaplica a versão que está nesta pasta
 set -eu
 
 RAIZ=$(cd "$(dirname "$0")" && pwd)
 DOT="$RAIZ/dotfiles"
 LOG=/var/log/freebsd-bspwm-aurtty.log
+CONF_SALVO=/usr/local/etc/freebsd-bspwm-aurtty.conf   # respostas da última instalação
+
+MODO=instalar
+case ${1:-} in
+  --atualizar|-u) MODO=atualizar ;;
+  -h|--help)
+    cat <<'AJUDA'
+uso: sh install.sh [--atualizar]
+
+  (sem opção)     instala, fazendo as perguntas
+  --atualizar     reaplica configs, temas, scripts e pacotes novos usando as
+                  respostas salvas em /usr/local/etc/freebsd-bspwm-aurtty.conf
+                  (sem perguntas; as configs atuais vão para um backup)
+
+O comando aurtty-update faz git pull do repositório e roda o --atualizar.
+AJUDA
+    exit 0 ;;
+  "") ;;
+  *) echo "opção desconhecida: $1 (veja sh install.sh --help)" >&2; exit 2 ;;
+esac
 
 # Recursos externos fixados (versão + sha256)
 GH0STZK_PKGS=https://gh0stzk.github.io/pkgs/x86_64
@@ -32,7 +56,8 @@ PACOTES="xorg bspwm sxhkd polybar picom rofi dunst alacritty feh xsettingsd jgme
 xdo xdotool jq ImageMagick7 maim xclip pamixer playerctl pavucontrol pulseaudio
 i3lock-color webp webp-pixbuf-loader bash gsed coreutils git curl dbus jetbrains-mono noto-basic
 papirus-icon-theme eza zoxide fzf bat gawk gnugrep fastfetch python3
-firefox thunar thunar-archive-plugin gsimplecal xdg-user-dirs neovim ripgrep fd-find"
+firefox thunar thunar-archive-plugin gsimplecal xdg-user-dirs neovim ripgrep fd-find
+btop gdu bandwhich gping pftop doas"
 
 # ferramentas de desenvolvimento backend (opcional). Os py3xx-* entram depois,
 # com a versão do python padrão do repositório. Sem Docker no FreeBSD.
@@ -101,6 +126,7 @@ erro() {
 }
 
 perguntar() { # perguntar "texto" padrão -> $RESPOSTA (modo texto)
+  RESPOSTA=""
   printf '\033[1;34m?\033[0m %s [%s]: ' "$1" "$2"
   read -r RESPOSTA </dev/tty || true
   [ -n "$RESPOSTA" ] || RESPOSTA=$2
@@ -124,7 +150,7 @@ ui_aviso() { # ui_aviso "texto"
   if [ "$UI" = dialog ]; then
     dlg "Atenção" --msgbox "$1" 0 "$LARG" || true
   else
-    cor '1;31' "    $(_linhas "$1" | sed 's/^ *//')"
+    cor '1;33' "$(_linhas "$1")"
   fi
 }
 
@@ -141,7 +167,7 @@ ui_senha() { # ui_senha título texto -> $RESPOSTA (sem eco)
     until dlg "$1" --insecure --ok-label Próximo --cancel-label Sair --passwordbox "$2" 0 "$LARG"; do sair_se_quiser; done
   else
     printf '\033[1;34m?\033[0m %s: ' "$1"
-    stty -echo </dev/tty; read -r RESPOSTA </dev/tty || true; stty echo </dev/tty; echo
+    RESPOSTA=""; stty -echo </dev/tty; read -r RESPOSTA </dev/tty || true; stty echo </dev/tty; echo
   fi
 }
 
@@ -243,8 +269,95 @@ baixar_verificado() { # url sha256 destino [nome na tela]
 [ "$(id -u)" -eq 0 ] || erro "rode como root (su -)"
 [ -d "$DOT/config/bspwm" ] || erro "pasta dotfiles/ não encontrada ao lado do script"
 
+# ---------- respostas salvas (modo --atualizar) ----------
+carregar_respostas() { # lê o arquivo linha a linha (sem executar nada dele)
+  [ -r "$CONF_SALVO" ] || return 1
+  while IFS='=' read -r _k _v; do
+    _v=${_v#\'}; _v=${_v%\'}
+    case $_k in
+      USUARIO) USUARIO=$_v ;;
+      TECLADO) TECLADO=$_v ;;
+      VIDEO) VIDEO=$_v ;;
+      LOGIN) LOGIN=$_v ;;
+      TERMINAL) TERMINAL=$_v ;;
+      DEV) DEV=$_v ;;
+    esac
+  done < "$CONF_SALVO"
+  case ${VIDEO:-} in 1|2|3|4) ;; *) return 1 ;; esac
+  case ${LOGIN:-} in 1|2|3) ;; *) return 1 ;; esac
+  case ${TERMINAL:-}${DEV:-} in [01][01]) ;; *) return 1 ;; esac
+  case ${TECLADO:-} in ''|*[!a-z0-9_,-]*) return 1 ;; esac
+  [ -n "${USUARIO:-}" ] && id "$USUARIO" >/dev/null 2>&1 || return 1
+  return 0
+}
+
+salvar_respostas() { # grava num temporário e renomeia: uma queda de energia não deixa o arquivo vazio
+  mkdir -p "$(dirname "$CONF_SALVO")"
+  cat > "$CONF_SALVO.novo" <<SALVO
+# gerado pelo freebsd-bspwm-aurtty ($(date '+%Y-%m-%d %H:%M')); usado por install.sh --atualizar
+RAIZ='$RAIZ'
+USUARIO='$USUARIO'
+TECLADO='$TECLADO'
+VIDEO='$VIDEO'
+LOGIN='$LOGIN'
+TERMINAL='$TERMINAL'
+DEV='$DEV'
+SALVO
+  chmod 644 "$CONF_SALVO.novo"
+  fsync "$CONF_SALVO.novo" 2>/dev/null || sync
+  mv -f "$CONF_SALVO.novo" "$CONF_SALVO"
+}
+
+_sn() { if [ "$1" -eq 1 ]; then echo sim; else echo não; fi; }
+
+montar_resumo() {
+  case $VIDEO in
+    1) VIDEO_DESC="VM com BIOS (vesa)" ;;
+    2) VIDEO_DESC="UEFI sem driver (scfb)" ;;
+    3) VIDEO_DESC="Intel ou AMD (drm-kmod)" ;;
+    4) VIDEO_DESC="NVIDIA" ;;
+  esac
+  case $LOGIN in
+    1) LOGIN_DESC="tela de login (LightDM)" ;;
+    2) LOGIN_DESC="ttyv0, abre o bspwm sozinho" ;;
+    3) LOGIN_DESC="manual (startx)" ;;
+  esac
+  _novo=""; [ "$CRIAR_USUARIO" -eq 1 ] && _novo=" (novo)"
+  RESUMO="Usuário:   $USUARIO$_novo\nTeclado:   $TECLADO\nVídeo:     $VIDEO_DESC\nEntrada:   $LOGIN_DESC\nTerminal:  $(_sn "$TERMINAL")\nBackend:   $(_sn "$DEV")"
+}
+
+PERGUNTAR=1
+CRIAR_USUARIO=0
+if [ "$MODO" = atualizar ]; then
+  if carregar_respostas; then
+    PERGUNTAR=0
+    montar_resumo
+    _txt="Atualiza esta instalação com a versão do script em:\n$RAIZ\n\n$RESUMO\n\nAs configs atuais (bspwm, barra, terminal...) vão para um backup em ~/.config-backup-<data> antes de serem substituídas."
+    if [ "$UI" = dialog ]; then
+      _rc=0
+      dlg "Atualizar" --yes-label Atualizar --no-label "Mudar opções" --yesno "$_txt" 0 "$LARG" || _rc=$?
+      case $_rc in
+        0) ;;
+        1) PERGUNTAR=1 ;;
+        *) sair_se_quiser; PERGUNTAR=1 ;;
+      esac
+    else
+      titulo "Atualizar"; _linhas "$_txt"; echo
+      sim "Atualizar com essas opções? (n refaz as perguntas)" s || PERGUNTAR=1
+    fi
+  else
+    ui_aviso "Não achei respostas salvas válidas em $CONF_SALVO\n(instalação feita antes desta versão?).\n\nVou fazer as perguntas agora e salvar para as próximas atualizações."
+  fi
+fi
+
 # ---------- perguntas ----------
-if [ "$UI" = dialog ]; then
+# as perguntas leem do terminal; sem ele (ex.: ssh sem -t, cron) não há como responder
+if [ "$PERGUNTAR" -eq 1 ] && ! (: </dev/tty) 2>/dev/null; then
+  erro "sem terminal para as perguntas: rode pelo console ou com ssh -t (no modo --atualizar, precisa de respostas salvas em $CONF_SALVO)"
+fi
+if [ "$PERGUNTAR" -eq 0 ]; then
+  :
+elif [ "$UI" = dialog ] && [ "$MODO" = instalar ]; then
   dlg "Bem-vindo" --yes-label Começar --no-label Sair --yesno \
 "Este instalador transforma o FreeBSD num ambiente de desenvolvimento com o bspwm e o tema Emilia.\n\n\
 Instala o Xorg, bspwm, polybar, picom, rofi, alacritty, Firefox, Thunar e Neovim (AstroNvim), com temas, ícones e fontes.\n\n\
@@ -268,8 +381,11 @@ else
   SUG=3
 fi
 
-USUARIO=${SUDO_USER:-}; TECLADO=br; VIDEO=$SUG; LOGIN=1; OPCIONAIS="terminal dev"
-while :; do
+USUARIO=${USUARIO:-${SUDO_USER:-}}; TECLADO=${TECLADO:-br}; VIDEO=${VIDEO:-$SUG}; LOGIN=${LOGIN:-1}
+OPCIONAIS=""
+[ "${TERMINAL:-1}" -eq 1 ] && OPCIONAIS="terminal"
+[ "${DEV:-1}" -eq 1 ] && OPCIONAIS="$OPCIONAIS dev"
+while [ "$PERGUNTAR" -eq 1 ]; do
   while :; do
     ui_input "Usuário" "Usuário que vai usar o bspwm.\nSe ele não existir, será criado agora." "$USUARIO"
     USUARIO=$RESPOSTA
@@ -328,20 +444,7 @@ while :; do
   TERMINAL=0; marcado terminal "$OPCIONAIS" && TERMINAL=1
   DEV=0; marcado dev "$OPCIONAIS" && DEV=1
 
-  case $VIDEO in
-    1) VIDEO_DESC="VM com BIOS (vesa)" ;;
-    2) VIDEO_DESC="UEFI sem driver (scfb)" ;;
-    3) VIDEO_DESC="Intel ou AMD (drm-kmod)" ;;
-    4) VIDEO_DESC="NVIDIA" ;;
-  esac
-  case $LOGIN in
-    1) LOGIN_DESC="tela de login (LightDM)" ;;
-    2) LOGIN_DESC="ttyv0, abre o bspwm sozinho" ;;
-    3) LOGIN_DESC="manual (startx)" ;;
-  esac
-  _novo=""; [ $CRIAR_USUARIO -eq 1 ] && _novo=" (novo)"
-  _sn() { if [ "$1" -eq 1 ]; then echo sim; else echo não; fi; }
-  RESUMO="Usuário:   $USUARIO$_novo\nTeclado:   $TECLADO\nVídeo:     $VIDEO_DESC\nEntrada:   $LOGIN_DESC\nTerminal:  $(_sn $TERMINAL)\nBackend:   $(_sn $DEV)"
+  montar_resumo
 
   if [ "$UI" = dialog ]; then
     _rc=0
@@ -359,6 +462,7 @@ while :; do
   fi
 done
 AUTOX=0; [ "$LOGIN" = 2 ] && AUTOX=1
+salvar_respostas
 
 ETAPAS="55:Pacotes
 3:Sistema e usuário
@@ -524,6 +628,18 @@ fi
 mkdir -p "$CASA/.config/nvim"
 tar -xf "$TMP/astronvim.tar.gz" -C "$CASA/.config/nvim" --strip-components 1
 info "config em ~/.config/nvim; o 'nvim' instala os plugins na primeira execução"
+
+# btop (aberto pelo clique na RAM): tema Tokyo Night, processos por memória
+if [ ! -e "$CASA/.config/btop/btop.conf" ]; then
+  mkdir -p "$CASA/.config/btop"
+  cat > "$CASA/.config/btop/btop.conf" <<'EOF2'
+# gerado pelo freebsd-bspwm-aurtty (o btop completa o resto ao salvar)
+color_theme = "tokyo-night"
+theme_background = False
+proc_sorting = "memory"
+proc_tree = False
+EOF2
+fi
 
 # calendário do relógio da barra (gsimplecal)
 mkdir -p "$CASA/.config/gsimplecal"
@@ -726,6 +842,46 @@ fi
 # ---------- atualizar: atualização com "desfazer" (boot environment do ZFS) ----------
 etapa "Ajustes finais"
 install -m 755 "$RAIZ/extras/bin/atualizar" /usr/local/bin/atualizar
+# aurtty-update: git pull do repositório + install.sh --atualizar
+install -m 755 "$RAIZ/extras/bin/aurtty-update" /usr/local/bin/aurtty-update
+info "aurtty-update: traz a versão nova do repositório e reaplica as configs"
+# painéis da barra: RAM (btop), disco (gdu) e menu de rede/firewall
+install -m 755 "$RAIZ/extras/bin/aurtty-painel" /usr/local/bin/aurtty-painel
+install -m 755 "$RAIZ/extras/bin/aurtty-rede" /usr/local/bin/aurtty-rede
+
+# doas: o sudo do OpenBSD; o grupo wheel pode virar root pedindo a própria senha
+# (usado pelo menu de rede para tráfego por programa, pftop e ligar/desligar o pf)
+if [ ! -e /usr/local/etc/doas.conf ]; then
+  printf '# gerado pelo freebsd-bspwm-aurtty\npermit persist :wheel\n' > /usr/local/etc/doas.conf
+  chmod 600 /usr/local/etc/doas.conf
+  info "doas: grupo wheel liberado (pede a senha do usuário)"
+fi
+
+# firewall (pf): bloqueia o que chega de fora e libera o que sai. Se o sshd está
+# ligado, a porta 22 fica aberta (senão o acesso remoto cairia).
+if [ ! -e /etc/pf.conf ] || grep -q 'freebsd-bspwm-aurtty' /etc/pf.conf; then
+  install -m 600 "$RAIZ/extras/pf/pf.conf" /etc/pf.conf
+  if [ "$(sysrc -n sshd_enable 2>/dev/null)" = YES ]; then
+    cat >> /etc/pf.conf <<'EOF2'
+
+# sshd ligado: acesso remoto liberado ("flags any" mantém a sessão já aberta
+# quando o pf é ligado durante a instalação por ssh)
+pass in quick proto tcp to port ssh flags any keep state
+EOF2
+  fi
+  sysrc -q pf_enable=YES pflog_enable=YES >/dev/null
+  kldload -n pf pflog 2>>"$LOG" || true      # o pfctl precisa do /dev/pf até para validar
+  if pfctl -nf /etc/pf.conf; then
+    service pflog restart >>"$LOG" 2>&1 || service pflog start >>"$LOG" 2>&1 || true
+    service pf restart >>"$LOG" 2>&1 || service pf start >>"$LOG" 2>&1 || true
+    info "firewall pf ligado: entrada bloqueada, saída liberada (menu de rede da barra)"
+  else
+    sysrc -q pf_enable=NO >/dev/null
+    FALHARAM="$FALHARAM pf.conf"
+  fi
+else
+  info "firewall: /etc/pf.conf já existe e não é deste projeto; mantido como está"
+fi
 if [ "$(mount -p | awk '$2 == "/" {print $3}')" = zfs ]; then
   info "atualizar: tira uma cópia do sistema antes de atualizar (atualizar --voltar desfaz)"
 else
@@ -754,12 +910,19 @@ chown -R "$USUARIO:$GRUPO" "$CASA/.config" "$CASA/.xinitrc" "$CASA/.gtkrc-2.0" "
 progresso 100 "Concluído"
 REINICIAR=0
 FIM="A instalação terminou."
-[ -n "$FALHARAM" ] && FIM="A instalação terminou, mas alguns pacotes falharam (veja o log):\n$FALHARAM"
-if [ "$VIDEO" = 3 ] || [ "$VIDEO" = 4 ]; then
+[ "$MODO" = atualizar ] && FIM="A atualização terminou."
+[ -n "$FALHARAM" ] && FIM="$FIM Alguns pacotes falharam (veja o log):\n$FALHARAM"
+if [ "$MODO" = atualizar ]; then
+  # na atualização basta entrar de novo na sessão (o LightDM e o driver já estavam configurados)
+  FIM="$FIM\n\nSaia da sessão e entre de novo (ou super+alt+r recarrega o bspwm) para aplicar."
+  [ -d "$BACKUP" ] && FIM="$FIM\nConfigs anteriores: $BACKUP"
+elif [ "$VIDEO" = 3 ] || [ "$VIDEO" = 4 ]; then
   REINICIAR=1
   FIM="$FIM\n\nO driver de vídeo é carregado no boot: reinicie com 'reboot'."
 fi
-if [ "$LOGIN" = 1 ]; then
+if [ "$MODO" = atualizar ]; then
+  :
+elif [ "$LOGIN" = 1 ]; then
   REINICIAR=1
   FIM="$FIM\n\nReinicie com 'reboot' e a tela de login abre sozinha."
 elif [ $AUTOX -eq 1 ]; then

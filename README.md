@@ -22,7 +22,9 @@
 - [Pipeline de instalação](#pipeline-de-instalação)
 - [Requisitos](#requisitos)
 - [Instalação](#instalação)
+- [Atualizar uma instalação existente](#atualizar-uma-instalação-existente)
 - [Componentes](#componentes)
+- [Painéis da barra e firewall](#painéis-da-barra-e-firewall)
 - [devdb: bancos em jails](#devdb-bancos-em-jails)
 - [Atualizações com rollback](#atualizações-com-rollback)
 - [Integridade e reprodutibilidade](#integridade-e-reprodutibilidade)
@@ -218,6 +220,52 @@ reboot                                      # carregar driver de vídeo / LightD
 - Em Intel/AMD e NVIDIA, o driver só é carregado no próximo boot.
 - Com LightDM, a tela de login sobe sozinha após o reboot.
 
+## Atualizar uma instalação existente
+
+Quando o repositório recebe configs, temas ou ajustes novos, não é preciso
+reinstalar: o instalador reaplica tudo na máquina já configurada, reaproveitando
+as respostas da instalação.
+
+**Jeito mais simples** (como root):
+
+```sh
+aurtty-update
+```
+
+O `aurtty-update` entra na pasta do repositório usada na instalação, faz
+`git pull`, mostra as novidades (`git log`) e roda `sh install.sh --atualizar`.
+
+**Passo a passo manual**, se preferir (também como root):
+
+```sh
+cd /root/freebsd-bspwm-aurtty     # a pasta onde você clonou o repositório
+git pull
+sh install.sh --atualizar
+```
+
+O que acontece no `--atualizar`:
+
+- **Sem perguntas:** as respostas (usuário, teclado, vídeo, login, opcionais)
+  ficam salvas em `/usr/local/etc/freebsd-bspwm-aurtty.conf`. O instalador
+  mostra um resumo; **Atualizar** segue, **Mudar opções** refaz as perguntas.
+- **Pacotes novos** da lista são instalados; os que já existem não são
+  reinstalados.
+- **Configs, temas, fontes e scripts** são reaplicados. As configs atuais de
+  `~/.config` (bspwm, barra, terminal…) vão antes para
+  `~/.config-backup-<data>`; o caminho aparece no fim. Se você mexeu em algo à
+  mão, copie de lá o que quiser manter.
+- **Senha e usuário** não são tocados.
+- No fim, basta **sair e entrar de novo** na sessão (ou `super+alt+r` para
+  recarregar o bspwm). Não precisa reiniciar.
+
+Instalações feitas antes desta função não têm o arquivo de respostas: na
+primeira vez o `--atualizar` faz as perguntas e salva; daí em diante é
+automático. As perguntas precisam de um terminal (console ou `ssh -t`).
+
+```sh
+sh install.sh --help        # opções do instalador
+```
+
 ## Componentes
 
 ### Desktop e sessão gráfica
@@ -277,7 +325,10 @@ início do `PATH` da sessão bspwm e evitam alterar o sistema:
 |---|---|---|
 | `sed` | GNU sed | `exec /usr/local/bin/gsed` |
 | `date` | GNU date | `exec /usr/local/bin/gdate` |
-| `stat`, `shuf`, `tac` | coreutils | wrappers/aliases para as versões GNU |
+| `stat`, `shuf`, `tac` | coreutils | wrappers/aliases para as versões GNU (`stat` → `gnustat`) |
+| `flock` | util-linux | aceita só `flock <fd>` (usado pelo seletor de wallpaper) e ignora a trava |
+| `systemctl` | systemd | `poweroff`, `reboot`, `suspend` via ConsoleKit2 (menu de energia) |
+| `uptime -p` | procps | calcula a partir de `kern.boottime` |
 | `pidof` | procps | implementado sobre `pgrep -x` (aceita `-q`, `-s`, `-x`) |
 | `ip route show default` | iproute2 | traduzido para `route -n get default` |
 | `NetStatus` | `internal/network` da polybar | lê a interface padrão e calcula a taxa com `netstat -I` |
@@ -290,10 +341,8 @@ início do `PATH` da sessão bspwm e evitam alterar o sistema:
 - Wallpapers próprios (`extras/walls/`, gerados por `tools/gerar-wallpapers.py`):
   **FreeBSD dark** (padrão) e uma homenagem ao ArchBSD/PacBSD. Os do Emilia
   continuam disponíveis no seletor (`super + alt + w`).
-- Barra: relógio em 24h (clique abre o calendário logo abaixo), áreas de
-  trabalho com ícone por função (1 terminal, 2 arquivos, 3 web, 4 chat,
-  5 código, 6 música; a ativa em vermelho) e sem os módulos de música (o mpd
-  não é instalado).
+- Barra: relógio em 24h (clique abre o calendário logo abaixo) e sem os
+  módulos de música (o mpd não é instalado).
 - Menu de apps (rofi) só com o que se usa: demos do GTK, xterm e utilitários
   ficam escondidos (`~/.local/share/applications/*.desktop` com `NoDisplay`).
 - Sessão sempre em inglês (`LANG=en_US.UTF-8`); pastas padrão da home criadas
@@ -320,6 +369,39 @@ FreeBSD dark e a sessão `bspwm (AurTTY)`.
 - Sessão: `/usr/local/share/xsessions/bspwm-aurtty.desktop`
 - Regra de polkit: o greeter roda como `lightdm`; usuários de `wheel`/`operator`
   podem desligar, reiniciar e suspender pela tela de login.
+
+## Painéis da barra e firewall
+
+Os módulos da barra abrem ferramentas com um clique, numa janela flutuante no
+centro da tela:
+
+| Clique em | Abre | Para quê |
+|---|---|---|
+| RAM | `btop` | processos por memória, gráficos de CPU/RAM; `k` encerra o selecionado |
+| Disco | `gdu` | discos montados e pastas que mais ocupam; `d` apaga |
+| Rede | menu de rede | conexão (cabo/Wi-Fi, IP, gateway) e as opções abaixo |
+| Relógio | `gsimplecal` | calendário logo abaixo do relógio |
+
+Menu de rede:
+
+| Opção | Ferramenta |
+|---|---|
+| Latency | `gping` até o gateway e `1.1.1.1` |
+| Traffic by app | `bandwhich` (tráfego por programa e conexão) |
+| Open connections | `sockstat -46c` |
+| Firewall live | `pftop` (estados e regras do pf ao vivo) |
+| Firewall rules and stats | `pfctl -s info`, regras e os últimos bloqueios (`/var/log/pflog`) |
+| Firewall ON / OFF | liga ou desliga o pf (desligar vale até o próximo boot) |
+
+**Firewall:** o instalador liga o **pf** com `/etc/pf.conf` do projeto
+(`extras/pf/pf.conf`): bloqueia o que chega de fora, libera tudo que sai, aceita
+ping e ICMPv6, e registra os bloqueios no `pflog`. Se o `sshd` estiver ligado,
+a porta 22 continua aberta. Um `/etc/pf.conf` que já existia e não é deste
+projeto é mantido como está. Para abrir uma porta, acrescente por exemplo
+`pass in proto tcp to port 8080` e rode `doas pfctl -f /etc/pf.conf`.
+
+**doas:** o que precisa de root no menu de rede usa o `doas`, liberado para o
+grupo `wheel` pedindo a sua senha (`/usr/local/etc/doas.conf`).
 
 ## devdb: bancos em jails
 
@@ -432,11 +514,15 @@ freebsd-bspwm-aurtty/
 │   ├── home/                  # .gtkrc-2.0, .icons
 │   └── fonts/                 # fontes usadas pela barra
 ├── extras/
+│   ├── arte/                  # buraco-negro.webp (avatar da tela de login)
 │   ├── bash/                  # bashrc, fzf-tab-preview, universo/
-│   ├── bin/                   # atualizar, devdb
-│   ├── installer/             # tema do bsddialog usado pelo install.sh
+│   ├── bin/                   # atualizar, devdb, aurtty-update, aurtty-painel, aurtty-rede
+│   ├── firefox/               # policies.json (tema escuro, sem patrocinados)
 │   ├── fonts/                 # AurTTYIcons.otf
+│   ├── gsimplecal/            # calendário do relógio
+│   ├── installer/             # tema do bsddialog usado pelo install.sh
 │   ├── lightdm/               # gtk.css, avatar.png
+│   ├── pf/                    # pf.conf (firewall padrão)
 │   ├── polybar/               # fogo.ini
 │   └── walls/                 # wallpapers próprios
 ├── freebsd-bin/               # shims FreeBSD para scripts do tema

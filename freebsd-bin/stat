@@ -1,3 +1,4 @@
 #!/bin/sh
-# GNU stat (pacote coreutils/gsed): os scripts do tema usam a sintaxe GNU
-exec /usr/local/bin/gstat "$@"
+# GNU stat (pacote coreutils): os scripts do tema usam a sintaxe GNU (stat -c).
+# No FreeBSD ele se chama gnustat (gstat é o monitor de disco do sistema base).
+exec /usr/local/bin/gnustat "$@"

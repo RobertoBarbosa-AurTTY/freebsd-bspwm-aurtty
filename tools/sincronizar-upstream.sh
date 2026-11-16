@@ -75,6 +75,23 @@ awk '
   { print }
 ' "$B/bars/bar07/modules.ini" > "$B/bars/bar07/modules.ini.new" && mv "$B/bars/bar07/modules.ini.new" "$B/bars/bar07/modules.ini"
 
+# cliques na barra: RAM abre o btop, disco o gdu e rede o menu de rede/firewall
+# (aurtty-painel e aurtty-rede, instalados pelo install.sh; o netmanager do tema é do Linux)
+awk '
+  function clicavel(cmd) { sub(/= "/, "= \"%{A1:" cmd ":}"); sub(/"$/, "%{A}\"") }
+  /^\[module\// { sec = $0 }
+  sec == "[module/memory_bar]" && /^format-prefix = "/ { clicavel("aurtty-painel ram") }
+  sec == "[module/memory_bar]" && /^format = <label>/ { print "format = %{A1:aurtty-painel ram:}<label>%{A}"; next }
+  sec == "[module/filesystem]" && /^format-prefix = "/ { clicavel("aurtty-painel disco") }
+  sec == "[module/filesystem]" && /^format = <label>/ { print "format = %{A1:aurtty-painel disco:}<label>%{A}"; next }
+  sec == "[module/network]" && /^format-prefix = "/ { clicavel("aurtty-rede") }
+  sec == "[module/network]" { gsub(/OpenApps --netmanager/, "aurtty-rede") }
+  { print }
+' "$B/bars/bar07/modules.ini" > "$B/bars/bar07/modules.ini.new" && mv "$B/bars/bar07/modules.ini.new" "$B/bars/bar07/modules.ini"
+for m in "aurtty-painel ram" "aurtty-painel disco" "aurtty-rede"; do
+  grep -q "A1:$m:" "$B/bars/bar07/modules.ini" || { echo "bar07: clique '$m' não aplicado" >&2; exit 1; }
+done
+
 # relógio em 24h; clique abre o calendário (gsimplecal, abre na posição do mouse)
 awk '
   /^\[module\// { sec = $0 }
@@ -84,37 +101,26 @@ awk '
   { print }
 ' "$B/bars/bar07/modules.ini" > "$B/bars/bar07/modules.ini.new" && mv "$B/bars/bar07/modules.ini.new" "$B/bars/bar07/modules.ini"
 
-# calendário do relógio flutuando (senão o bspwm o coloca lado a lado com as janelas)
+# calendário do relógio e painéis da barra (AurTTY-Panel) flutuando; senão o bspwm
+# os coloca lado a lado com as janelas
 awk '
   /^    pavucontrol\)/ { print "    Gsimplecal)"; print "        result \"state=floating sticky=on\""; print "        ;;" }
+  /^    pavucontrol\)/ { print "    AurTTY-Panel)"; print "        result \"state=floating center=on rectangle=1280x760+0+0\""; print "        ;;" }
   { print }
 ' "$B/bin/ExternalRules" > "$B/bin/ExternalRules.new" && mv "$B/bin/ExternalRules.new" "$B/bin/ExternalRules"
 chmod +x "$B/bin/ExternalRules"
-grep -q Gsimplecal "$B/bin/ExternalRules" || { echo "ExternalRules: regra do calendário não aplicada" >&2; exit 1; }
+grep -q Gsimplecal "$B/bin/ExternalRules" && grep -q AurTTY-Panel "$B/bin/ExternalRules" ||
+  { echo "ExternalRules: regras do calendário/painéis não aplicadas" >&2; exit 1; }
 
 # Launcher da barra: buraco negro (fonte própria AurTTY Icons, U+E000) em vermelho
-# áreas de trabalho com ícone por função, seguindo o ExternalRules do tema
-# (1 terminal, 2 arquivos/Thunar, 3 web/Firefox, 4 chat/Telegram, 5 código, 6 música);
-# a ativa fica destacada na cor do tema, as ocupadas em azul e as vazias apagadas
+# área de trabalho ativa: logo do FreeBSD (glifo nf-linux-freebsd U+F30C da JetBrainsMono Nerd Font) no lugar do pacman
 sed -i 's/^font-4 = .*/&\nfont-5 = "AurTTY Icons:size=18;5"\nfont-6 = "JetBrainsMono Nerd Font Propo:size=11;3"/' "$B/bars/bar07/config.ini"
 awk '
   /^\[module\// { sec = $0 }
   sec == "[module/launcher]" && /^label = / { print "label = \xee\x80\x80"; next }
   sec == "[module/launcher]" && /^label-font = / { print "label-font = 6"; next }
-  sec == "[module/bspwm]" && /^occupied-scroll = / {
-    print
-    print "ws-icon-0 = 1;\xf3\xb0\x86\x8d"
-    print "ws-icon-1 = 2;\xf3\xb0\x89\x8b"
-    print "ws-icon-2 = 3;\xf3\xb0\x88\xb9"
-    print "ws-icon-3 = 4;\xf3\xb0\x8d\xa9"
-    print "ws-icon-4 = 5;\xf3\xb0\x85\xa9"
-    print "ws-icon-5 = 6;\xf3\xb0\x9d\x9a"
-    print "ws-icon-default = \xf3\xb0\x8a\xa0"
-    next
-  }
-  sec == "[module/bspwm]" && /^label-(focused|occupied|urgent|empty) = / { sub(/=.*/, "= %icon%"); print; split($1, k, "-"); print "label-" k[2] "-font = 7"; next }
+  sec == "[module/bspwm]" && /^label-focused = / { print "label-focused = \xef\x8c\x8c"; print "label-focused-font = 7"; next }
   sec == "[module/bspwm]" && /^label-focused-foreground = / { print "label-focused-foreground = ${color.blue-arch}"; next }
-  sec == "[module/bspwm]" && /^label-empty-foreground = / { print "label-empty-foreground = ${color.black-bright}"; next }
   { print }
 ' "$B/bars/bar07/modules.ini" > "$B/bars/bar07/modules.ini.new" && mv "$B/bars/bar07/modules.ini.new" "$B/bars/bar07/modules.ini"
 sed -i 's/^arch_icon=.*/arch_icon="#e8303a"   # ícone AurTTY (buraco negro)/' "$B/rices/emilia/theme-config.bash"

@@ -1,0 +1,9 @@
+#!/bin/sh
+# flock do util-linux não existe no FreeBSD. O WallSelect só usa "flock N" para
+# não abrir duas instâncias ao mesmo tempo; aqui a trava é ignorada (o seletor
+# funciona igual, só não impede duas cópias abertas juntas).
+case $# in
+  1) case $1 in *[!0-9]*) ;; *) exit 0 ;; esac ;;
+esac
+echo "flock: só a forma 'flock <fd>' é suportada no FreeBSD (use lockf)" >&2
+exit 1
