@@ -40,24 +40,200 @@ DEV_PKGS="lazygit tmux gh mise uv go-yq xh python3 node22 npm-node22 deno
 sqlite3 postgresql17-client mariadb114-client valkey hs-ShellCheck bastille"
 DEV_PY="httpie pgcli pre-commit"
 
-# ---------- utilitários ----------
-cor() { printf '\033[%sm%s\033[0m\n' "$1" "$2"; }
+# ---------- interface ----------
+# Com terminal e bsddialog (base do FreeBSD 14+), as perguntas e o progresso
+# são telas com o tema de extras/installer. Sem terminal, sem bsddialog ou com
+# AURTTY_TEXTO=1, as mesmas perguntas aparecem em texto simples.
+UI=texto
+if [ -z "${AURTTY_TEXTO:-}" ] && [ -t 0 ] && [ -t 1 ] && command -v bsddialog >/dev/null 2>&1; then
+  UI=dialog
+fi
+TEMA_UI="$RAIZ/extras/installer/bsddialog.theme"
+FUNDO="freebsd-bspwm-aurtty  |  FreeBSD $(uname -r)  |  $(uname -m)"
+LARG=66            # largura das janelas (cabe no console 80x25)
+INSTALANDO=0       # 1 depois da confirmação: a saída vai para o log
+ERRO_MOSTRADO=0
+TMP=""
+
+# console VGA em modo texto (boot BIOS): a fonte da placa (CP437) não tem ã/õ
+CP437=0
+case $(tty 2>/dev/null) in
+  /dev/ttyv*) if grep -qs '^VT(vga): text' /var/run/dmesg.boot; then CP437=1; fi ;;
+esac
+
+cor() { if [ -t 1 ]; then printf '\033[%sm%s\033[0m\n' "$1" "$2"; else printf '%s\n' "$2"; fi; }
 titulo() { echo; cor '1;35' "==> $*"; }
 info() { cor '0;36' "    $*"; }
-erro() { cor '1;31' "ERRO: $*" >&2; exit 1; }
 
-perguntar() { # perguntar "texto" padrão -> $RESPOSTA
+_t() { # texto adaptado à fonte do console
+  if [ "$CP437" -eq 1 ]; then
+    printf '%s' "$1" | sed 's/ã/a/g; s/õ/o/g; s/Ã/A/g; s/Õ/O/g; s/Á/A/g; s/À/A/g; s/Â/A/g; s/Ê/E/g; s/Í/I/g; s/Ó/O/g; s/Ô/O/g; s/Ú/U/g'
+  else
+    printf '%s' "$1"
+  fi
+}
+
+_linhas() { # imprime um texto com "\n" como linhas recuadas (modo texto)
+  printf '%s\n' "$1" | awk '{ n = split($0, l, /\\n/); for (i = 1; i <= n; i++) print "    " l[i] }'
+}
+
+dlg() { # dlg "título" --<diálogo> ...  -> saída em $RESPOSTA, retorna o código do bsddialog
+  _dt=$(_t "$1"); shift
+  _dn=$#
+  while [ "$_dn" -gt 0 ]; do set -- "$@" "$(_t "$1")"; shift; _dn=$((_dn - 1)); done
+  _drc=0
+  RESPOSTA=$(bsddialog --load-theme "$TEMA_UI" --backtitle "$(_t "$FUNDO")" \
+    --title " $_dt " "$@" 2>&1 </dev/tty >/dev/tty) || _drc=$?
+  return "$_drc"
+}
+
+erro() {
+  if [ "$UI" = dialog ] && [ "$INSTALANDO" -eq 1 ]; then
+    printf 'ERRO: %s\n' "$*"
+    ERRO_MOSTRADO=1
+    dlg "Erro" --msgbox "$*\n\nDetalhes no log: $LOG" 0 "$LARG" || true
+    clear </dev/tty >/dev/tty 2>&1 || true
+    printf 'ERRO: %s (log: %s)\n' "$*" "$LOG" >&4
+  else
+    cor '1;31' "ERRO: $*" >&2
+  fi
+  exit 1
+}
+
+perguntar() { # perguntar "texto" padrão -> $RESPOSTA (modo texto)
   printf '\033[1;34m?\033[0m %s [%s]: ' "$1" "$2"
   read -r RESPOSTA </dev/tty || true
   [ -n "$RESPOSTA" ] || RESPOSTA=$2
 }
 
-sim() { # sim "texto" s|n
+sim() { # sim "texto" s|n (modo texto)
   perguntar "$1 (s/n)" "$2"
   case $RESPOSTA in [sSyY]*) return 0 ;; *) return 1 ;; esac
 }
 
-baixar_verificado() { # url sha256 destino
+sair_se_quiser() { # depois de "Sair" ou Esc numa tela
+  if dlg "Sair" --yes-label Sair --no-label Voltar --default-no \
+    --yesno "Sair do instalador?\n\nNada foi alterado no sistema até aqui." 9 "$LARG"; then
+    clear </dev/tty >/dev/tty 2>&1 || true
+    _t "Instalação cancelada. Nada foi alterado."; echo
+    exit 0
+  fi
+}
+
+ui_aviso() { # ui_aviso "texto"
+  if [ "$UI" = dialog ]; then
+    dlg "Atenção" --msgbox "$1" 0 "$LARG" || true
+  else
+    cor '1;31' "    $(_linhas "$1" | sed 's/^ *//')"
+  fi
+}
+
+ui_input() { # ui_input título texto padrão -> $RESPOSTA
+  if [ "$UI" = dialog ]; then
+    until dlg "$1" --ok-label Próximo --cancel-label Sair --inputbox "$2" 0 "$LARG" "$3"; do sair_se_quiser; done
+  else
+    echo; _linhas "$2"; perguntar "$1" "$3"
+  fi
+}
+
+ui_senha() { # ui_senha título texto -> $RESPOSTA (sem eco)
+  if [ "$UI" = dialog ]; then
+    until dlg "$1" --insecure --ok-label Próximo --cancel-label Sair --passwordbox "$2" 0 "$LARG"; do sair_se_quiser; done
+  else
+    printf '\033[1;34m?\033[0m %s: ' "$1"
+    stty -echo </dev/tty; read -r RESPOSTA </dev/tty || true; stty echo </dev/tty; echo
+  fi
+}
+
+ui_menu() { # ui_menu título texto padrão tag desc [tag desc]... -> $RESPOSTA
+  _mt=$1; _mx=$2; _mp=$3; shift 3
+  if [ "$UI" = dialog ]; then
+    until dlg "$_mt" --default-item "$_mp" --ok-label Escolher --cancel-label Sair \
+      --menu "$_mx" 0 "$LARG" 0 "$@"; do sair_se_quiser; done
+    return 0
+  fi
+  echo; _linhas "$_mx"
+  _tags=" "
+  while [ $# -ge 2 ]; do info "  $1) $2"; _tags="$_tags$1 "; shift 2; done
+  while :; do
+    perguntar "$_mt" "$_mp"
+    case $_tags in *" $RESPOSTA "*) return 0 ;; esac
+    cor '1;31' "    opção inválida: $RESPOSTA"
+  done
+}
+
+ui_check() { # ui_check título texto tag desc on|off [...] -> $RESPOSTA com as tags marcadas
+  _ct=$1; _cx=$2; shift 2
+  if [ "$UI" = dialog ]; then
+    until dlg "$_ct" --ok-label Próximo --cancel-label Sair \
+      --checklist "$_cx" 0 "$LARG" 0 "$@"; do sair_se_quiser; done
+    RESPOSTA=$(printf '%s' "$RESPOSTA" | tr -d "\"'")
+    return 0
+  fi
+  _sel=""
+  while [ $# -ge 3 ]; do
+    _pd=n; [ "$3" = on ] && _pd=s
+    if sim "$2?" "$_pd"; then _sel="$_sel $1"; fi
+    shift 3
+  done
+  RESPOSTA=$_sel
+}
+
+marcado() { # marcado tag "lista" -> 0 se a tag está na lista
+  case " $2 " in *" $1 "*) return 0 ;; *) return 1 ;; esac
+}
+
+# ---------- progresso ----------
+# ETAPAS: "peso:nome", uma por linha, na ordem em que rodam. O peso divide a
+# barra geral (os pacotes levam a maior parte do tempo).
+ETAPAS=""
+ETAPA=0
+PCT=0
+etapa() { # etapa "nome": começa a próxima etapa
+  ETAPA=$((ETAPA + 1))
+  titulo "$1"
+  progresso 0 ""
+}
+
+progresso() { # progresso pct_da_etapa "detalhe"
+  PCT=$1
+  [ "$UI" = dialog ] || return 0
+  _pp=$1; _pdet=$2
+  _ptot=0; _pfeito=0; _pi=0
+  set --
+  _pifs=$IFS; IFS='
+'
+  for _pe in $ETAPAS; do
+    _pi=$((_pi + 1)); _peso=${_pe%%:*}; _nome=${_pe#*:}
+    _ptot=$((_ptot + _peso))
+    if [ "$_pi" -lt "$ETAPA" ]; then
+      _pfeito=$((_pfeito + _peso * 100)); set -- "$@" "  $_nome" 100
+    elif [ "$_pi" -eq "$ETAPA" ]; then
+      _pfeito=$((_pfeito + _peso * _pp)); set -- "$@" "> $_nome" "$_pp"
+    else
+      set -- "$@" "  $_nome" 0
+    fi
+  done
+  IFS=$_pifs
+  dlg "Instalando" --mixedgauge "\n${_pdet:- }\n\nLog: $LOG" 0 "$LARG" "$((_pfeito / _ptot))" "$@" || true
+}
+
+ao_sair() {
+  _rc=$?
+  [ -n "$TMP" ] && rm -rf "$TMP"
+  if [ "$_rc" -ne 0 ] && [ "$INSTALANDO" -eq 1 ] && [ "$UI" = dialog ] && [ "$ERRO_MOSTRADO" -eq 0 ]; then
+    tail -n 40 "$LOG" > "$LOG.fim" 2>/dev/null || true
+    dlg "A instalação parou (código $_rc)" --exit-label Fechar --textbox "$LOG.fim" 20 76 || true
+    rm -f "$LOG.fim"
+    clear </dev/tty >/dev/tty 2>&1 || true
+    printf 'A instalação parou (código %s). Log completo: %s\n' "$_rc" "$LOG" >&4
+  fi
+}
+trap ao_sair EXIT
+trap 'exit 130' INT TERM
+
+baixar_verificado() { # url sha256 destino [nome na tela]
+  progresso "$PCT" "Baixando e conferindo (sha256): ${4:-${1##*/}}"
   fetch -q -o "$3" "$1" || erro "falha ao baixar $1"
   [ "$(sha256 -q "$3")" = "$2" ] || erro "checksum não confere: $1"
 }
@@ -67,70 +243,148 @@ baixar_verificado() { # url sha256 destino
 [ "$(id -u)" -eq 0 ] || erro "rode como root (su -)"
 [ -d "$DOT/config/bspwm" ] || erro "pasta dotfiles/ não encontrada ao lado do script"
 
-cat <<'EOF'
+# ---------- perguntas ----------
+if [ "$UI" = dialog ]; then
+  dlg "Bem-vindo" --yes-label Começar --no-label Sair --yesno \
+"Este instalador transforma o FreeBSD num ambiente de desenvolvimento com o bspwm e o tema Emilia.\n\n\
+Instala o Xorg, bspwm, polybar, picom, rofi, alacritty, Firefox, PCManFM e Neovim (AstroNvim), com temas, ícones e fontes.\n\n\
+Nada muda no sistema até você confirmar o resumo.\n\
+Setas e Tab navegam, Espaço marca, Enter confirma." 0 "$LARG" || sair_se_quiser
+else
+  cat <<'EOF'
 
   ┌──────────────────────────────────────────────┐
   │  freebsd-bspwm-aurtty                        │
   │  ambiente de desenvolvimento com bspwm       │
   └──────────────────────────────────────────────┘
 EOF
-
-# ---------- perguntas ----------
-titulo "Configuração"
-
-perguntar "Usuário que vai usar o bspwm (existente ou novo)" "${SUDO_USER:-}"
-USUARIO=$RESPOSTA
-[ -n "$USUARIO" ] || erro "informe um usuário"
-CRIAR_USUARIO=0
-id "$USUARIO" >/dev/null 2>&1 || CRIAR_USUARIO=1
-if [ $CRIAR_USUARIO -eq 1 ]; then
-  info "o usuário '$USUARIO' não existe e será criado"
-  while :; do
-    printf '\033[1;34m?\033[0m Senha para %s: ' "$USUARIO"
-    stty -echo </dev/tty; read -r SENHA </dev/tty; stty echo </dev/tty; echo
-    printf '\033[1;34m?\033[0m Repita a senha: '
-    stty -echo </dev/tty; read -r SENHA2 </dev/tty; stty echo </dev/tty; echo
-    [ -n "$SENHA" ] && [ "$SENHA" = "$SENHA2" ] && break
-    cor '1;31' "    as senhas não conferem (ou estão vazias), tente de novo"
-  done
+  titulo "Configuração"
 fi
 
-perguntar "Layout do teclado (br = ABNT2, us)" "br"
-TECLADO=$RESPOSTA
-
-# sugere o driver de vídeo
+# sugestão do driver de vídeo
 if [ "$(sysctl -n kern.vm_guest)" != none ]; then
   if [ "$(sysctl -n machdep.bootmethod 2>/dev/null)" = UEFI ]; then SUG=2; else SUG=1; fi
 else
   SUG=3
 fi
-echo
-info "Vídeo:  1) VM com BIOS (vesa)   2) VM/PC com UEFI sem driver (scfb)"
-info "        3) Intel ou AMD (drm-kmod)   4) NVIDIA"
-perguntar "Driver de vídeo" "$SUG"
-VIDEO=$RESPOSTA
-case $VIDEO in 1|2|3|4) ;; *) erro "opção de vídeo inválida" ;; esac
 
-echo
-info "Login:  1) tela de login gráfica (LightDM, com o tema Emilia)"
-info "        2) entrar no terminal (ttyv0) e o bspwm abre sozinho   3) manual (startx)"
-perguntar "Como entrar no bspwm" 1
-LOGIN=$RESPOSTA
-case $LOGIN in 1|2|3) ;; *) erro "opção de login inválida" ;; esac
+USUARIO=${SUDO_USER:-}; TECLADO=br; VIDEO=$SUG; LOGIN=1; OPCIONAIS="terminal dev"
+while :; do
+  while :; do
+    ui_input "Usuário" "Usuário que vai usar o bspwm.\nSe ele não existir, será criado agora." "$USUARIO"
+    USUARIO=$RESPOSTA
+    if [ -z "$USUARIO" ]; then ui_aviso "Informe um usuário."; continue; fi
+    CRIAR_USUARIO=0
+    id "$USUARIO" >/dev/null 2>&1 || CRIAR_USUARIO=1
+    if [ $CRIAR_USUARIO -eq 1 ]; then
+      case $USUARIO in
+        [a-z_]*[!a-z0-9_-]*|[!a-z_]*)
+          ui_aviso "Nome inválido: '$USUARIO'.\nUse letras minúsculas, números, _ ou -, começando por letra."
+          continue ;;
+      esac
+    fi
+    break
+  done
+  if [ $CRIAR_USUARIO -eq 1 ]; then
+    while :; do
+      ui_senha "Senha" "O usuário '$USUARIO' não existe e será criado.\nSenha para $USUARIO:"
+      SENHA=$RESPOSTA
+      ui_senha "Senha" "Repita a senha de $USUARIO:"
+      SENHA2=$RESPOSTA
+      [ -n "$SENHA" ] && [ "$SENHA" = "$SENHA2" ] && break
+      ui_aviso "As senhas não conferem (ou estão vazias). Tente de novo."
+    done
+  fi
+
+  ui_menu "Teclado" "Layout do teclado no ambiente gráfico." "$TECLADO" \
+    br "Português do Brasil (ABNT2)" \
+    us "Inglês (EUA)" \
+    outro "Outro layout do XKB (digitar o nome)"
+  TECLADO=$RESPOSTA
+  if [ "$TECLADO" = outro ]; then
+    ui_input "Teclado" "Nome do layout no XKB (ex.: pt, es, de, fr):" ""
+    TECLADO=${RESPOSTA:-br}
+  fi
+
+  ui_menu "Vídeo" "Qual vídeo este computador usa?\nA sugestão para esta máquina já vem marcada ($SUG)." "$VIDEO" \
+    1 "VM com BIOS (vesa)" \
+    2 "VM ou PC com UEFI, sem driver (scfb)" \
+    3 "Intel ou AMD (drm-kmod)" \
+    4 "NVIDIA"
+  VIDEO=$RESPOSTA
+
+  ui_menu "Login" "Como você quer entrar no bspwm?" "$LOGIN" \
+    1 "Tela de login gráfica (LightDM, tema Emilia)" \
+    2 "Terminal: entrar no ttyv0 e o bspwm abre sozinho" \
+    3 "Manual: rodar startx"
+  LOGIN=$RESPOSTA
+
+  _on_t=off; marcado terminal "$OPCIONAIS" && _on_t=on
+  _on_d=off; marcado dev "$OPCIONAIS" && _on_d=on
+  ui_check "Opcionais" "Espaço marca ou desmarca." \
+    terminal "Terminal AurTTY: oh-my-bash, ble.sh, fzf-tab" "$_on_t" \
+    dev "Ferramentas backend: node, deno, python..." "$_on_d"
+  OPCIONAIS=$RESPOSTA
+  TERMINAL=0; marcado terminal "$OPCIONAIS" && TERMINAL=1
+  DEV=0; marcado dev "$OPCIONAIS" && DEV=1
+
+  case $VIDEO in
+    1) VIDEO_DESC="VM com BIOS (vesa)" ;;
+    2) VIDEO_DESC="UEFI sem driver (scfb)" ;;
+    3) VIDEO_DESC="Intel ou AMD (drm-kmod)" ;;
+    4) VIDEO_DESC="NVIDIA" ;;
+  esac
+  case $LOGIN in
+    1) LOGIN_DESC="tela de login (LightDM)" ;;
+    2) LOGIN_DESC="ttyv0, abre o bspwm sozinho" ;;
+    3) LOGIN_DESC="manual (startx)" ;;
+  esac
+  _novo=""; [ $CRIAR_USUARIO -eq 1 ] && _novo=" (novo)"
+  _sn() { if [ "$1" -eq 1 ]; then echo sim; else echo não; fi; }
+  RESUMO="Usuário:   $USUARIO$_novo\nTeclado:   $TECLADO\nVídeo:     $VIDEO_DESC\nEntrada:   $LOGIN_DESC\nTerminal:  $(_sn $TERMINAL)\nBackend:   $(_sn $DEV)"
+
+  if [ "$UI" = dialog ]; then
+    _rc=0
+    dlg "Resumo" --yes-label Instalar --no-label Refazer --yesno \
+      "$RESUMO\n\nA instalação leva alguns minutos e baixa os pacotes da internet." 0 "$LARG" || _rc=$?
+    case $_rc in
+      0) break ;;
+      1) continue ;;
+      *) sair_se_quiser ;;
+    esac
+  else
+    echo; titulo "Resumo"; _linhas "$RESUMO"; echo
+    sim "Continuar?" s || exit 0
+    break
+  fi
+done
 AUTOX=0; [ "$LOGIN" = 2 ] && AUTOX=1
 
-TERMINAL=0
-sim "Terminal estilo AurTTY (bash + oh-my-bash powerline + ble.sh + fzf-tab) como shell padrão?" s && TERMINAL=1
+ETAPAS="55:Pacotes
+3:Sistema e usuário
+8:Temas, ícones e cursor
+8:Fontes
+4:Dotfiles e AstroNvim"
+[ "$LOGIN" = 1 ] && ETAPAS="$ETAPAS
+6:Tela de login"
+[ $TERMINAL -eq 1 ] && ETAPAS="$ETAPAS
+8:Terminal AurTTY"
+ETAPAS="$ETAPAS
+2:Ajustes finais"
 
-DEV=0
-sim "Ferramentas de desenvolvimento backend (node, deno, python, mise, clientes de banco...)?" s && DEV=1
-
-echo
-info "Resumo: usuário=$USUARIO teclado=$TECLADO vídeo=$VIDEO login=$LOGIN terminal=$TERMINAL dev=$DEV"
-sim "Continuar?" s || exit 0
+# daqui em diante a saída detalhada vai para o log e a tela mostra o progresso
+INSTALANDO=1
+if [ "$UI" = dialog ]; then
+  exec 3>&1 4>&2 >>"$LOG" 2>&1
+  printf '\n===== freebsd-bspwm-aurtty: %s =====\n' "$(date)"
+else
+  exec 3>&1 4>&2
+fi
 
 # ---------- pacotes ----------
-titulo "Instalando pacotes (log em $LOG)"
+etapa "Pacotes"
+info "log em $LOG"
+progresso 0 "Atualizando o catálogo de pacotes (pkg update)..."
 export ASSUME_ALWAYS_YES=yes
 pkg bootstrap -q </dev/null >>"$LOG" 2>&1 || true
 pkg update -q </dev/null >>"$LOG" 2>&1
@@ -152,13 +406,18 @@ if [ $DEV -eq 1 ]; then
 fi
 
 FALHARAM=""
-for p in $PACOTES $VIDEO_PKGS $EXTRA_PKGS; do
+TODOS=$(echo $PACOTES $VIDEO_PKGS $EXTRA_PKGS)
+N_PKGS=$(echo "$TODOS" | wc -w | tr -d ' ')
+N=0
+for p in $TODOS; do
+  N=$((N + 1))
+  progresso $(((N - 1) * 100 / N_PKGS)) "Pacote $N de $N_PKGS:  $p"
   printf '    %-28s' "$p"
   if pkg install -q "$p" </dev/null >>"$LOG" 2>&1; then cor '0;32' ok; else cor '0;31' falhou; FALHARAM="$FALHARAM $p"; fi
 done
 
 # ---------- sistema ----------
-titulo "Configurando o sistema"
+etapa "Sistema e usuário"
 sysrc -q dbus_enable=YES >/dev/null
 service dbus status >/dev/null 2>&1 || service dbus start >>"$LOG" 2>&1 || true
 
@@ -215,9 +474,8 @@ CASA=$(pw usershow "$USUARIO" | cut -d: -f9)
 GRUPO=$(id -gn "$USUARIO")
 
 # ---------- temas GTK, ícones e cursor ----------
-titulo "Tema GTK TokyoNight-zk, ícones TokyoNight-SE e cursor Qogirr"
+etapa "Temas, ícones e cursor"
 TMP=$(mktemp -d)
-trap 'rm -rf "$TMP"' EXIT
 for item in "$TEMA_GTK" "$TEMA_ICONES" "$TEMA_CURSOR"; do
   arq=${item% *}; sha=${item#* }
   info "$arq"
@@ -230,7 +488,7 @@ tar -xf "$TMP/${TEMA_CURSOR% *}" -C /usr/local/share/icons --strip-components 3 
 gtk-update-icon-cache -q -f /usr/local/share/icons/TokyoNight-SE 2>/dev/null || true
 
 # ---------- fontes ----------
-titulo "Fontes"
+etapa "Fontes"
 FONTES=/usr/local/share/fonts/aurtty
 mkdir -p "$FONTES"
 cp "$DOT"/fonts/* "$FONTES/"
@@ -240,7 +498,7 @@ fc-cache -f >/dev/null 2>&1
 info "JetBrainsMono Nerd Font, FontAwesome, Material Design Icons, MesloLGS NF"
 
 # ---------- dotfiles ----------
-titulo "Dotfiles do tema Emilia"
+etapa "Dotfiles e AstroNvim"
 BACKUP="$CASA/.config-backup-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$CASA/.config"
 for d in bspwm alacritty dunst jgmenu clipcat gtk-3.0; do
@@ -258,7 +516,7 @@ done
 
 # ---------- AstroNvim (configuração do Neovim) ----------
 titulo "AstroNvim"
-baixar_verificado "$ASTRONVIM_URL" "$ASTRONVIM_SHA" "$TMP/astronvim.tar.gz"
+baixar_verificado "$ASTRONVIM_URL" "$ASTRONVIM_SHA" "$TMP/astronvim.tar.gz" AstroNvim
 if [ -e "$CASA/.config/nvim" ]; then
   mkdir -p "$BACKUP"
   mv "$CASA/.config/nvim" "$BACKUP/"
@@ -304,8 +562,9 @@ fi
 
 # ---------- tela de login (LightDM) ----------
 if [ "$LOGIN" = 1 ]; then
-  titulo "Tela de login: LightDM com o tema Emilia"
+  etapa "Tela de login"
   for p in lightdm lightdm-gtk-greeter; do
+    progresso 30 "Pacote: $p"
     pkg install -q "$p" </dev/null >>"$LOG" 2>&1 || FALHARAM="$FALHARAM $p"
   done
 
@@ -388,10 +647,10 @@ fi
 
 # ---------- terminal ----------
 if [ $TERMINAL -eq 1 ]; then
-  titulo "Terminal: bash + oh-my-bash (powerline) + ble.sh + fzf-tab"
-  baixar_verificado "$OMB_URL" "$OMB_SHA" "$TMP/omb.tar.gz"
+  etapa "Terminal AurTTY"
+  baixar_verificado "$OMB_URL" "$OMB_SHA" "$TMP/omb.tar.gz" oh-my-bash
   baixar_verificado "$BLE_URL" "$BLE_SHA" "$TMP/ble.tar.xz"
-  baixar_verificado "$FZFTAB_URL" "$FZFTAB_SHA" "$TMP/fzftab.tar.gz"
+  baixar_verificado "$FZFTAB_URL" "$FZFTAB_SHA" "$TMP/fzftab.tar.gz" fzf-tab-completion
   # mesmo terminal para o usuário e para o root (su -)
   for alvo in "$CASA:$USUARIO:$GRUPO" "/root:root:wheel"; do
     casa=${alvo%%:*}; dono=${alvo#*:}; dono=${dono%%:*}; grupo=${alvo##*:}
@@ -432,6 +691,7 @@ EOF2
 fi
 
 # ---------- atualizar: atualização com "desfazer" (boot environment do ZFS) ----------
+etapa "Ajustes finais"
 install -m 755 "$RAIZ/extras/bin/atualizar" /usr/local/bin/atualizar
 if [ "$(mount -p | awk '$2 == "/" {print $3}')" = zfs ]; then
   info "atualizar: tira uma cópia do sistema antes de atualizar (atualizar --voltar desfaz)"
@@ -458,17 +718,35 @@ chown -R "$USUARIO:$GRUPO" "$CASA/.config" "$CASA/.xinitrc" "$CASA/.gtkrc-2.0" "
 [ -d "$BACKUP" ] && chown -R "$USUARIO:$GRUPO" "$BACKUP"
 
 # ---------- fim ----------
-titulo "Pronto"
-[ -n "$FALHARAM" ] && cor '1;33' "    pacotes que falharam (veja $LOG):$FALHARAM"
+progresso 100 "Concluído"
+REINICIAR=0
+FIM="A instalação terminou."
+[ -n "$FALHARAM" ] && FIM="A instalação terminou, mas alguns pacotes falharam (veja o log):\n$FALHARAM"
 if [ "$VIDEO" = 3 ] || [ "$VIDEO" = 4 ]; then
-  info "o driver de vídeo é carregado no boot: reinicie com 'reboot'"
+  REINICIAR=1
+  FIM="$FIM\n\nO driver de vídeo é carregado no boot: reinicie com 'reboot'."
 fi
 if [ "$LOGIN" = 1 ]; then
-  info "reinicie com 'reboot' e a tela de login abre sozinha"
+  REINICIAR=1
+  FIM="$FIM\n\nReinicie com 'reboot' e a tela de login abre sozinha."
 elif [ $AUTOX -eq 1 ]; then
-  info "entre como '$USUARIO' no ttyv0 e o bspwm abre sozinho"
+  FIM="$FIM\n\nEntre como '$USUARIO' no ttyv0 e o bspwm abre sozinho."
 else
-  info "entre como '$USUARIO' e rode: startx"
+  FIM="$FIM\n\nEntre como '$USUARIO' e rode: startx"
 fi
-info "atalhos: super+Return (terminal), super+@space (menu), alt+F1 (ajuda)"
-info "apps: super+b Firefox, super+f PCManFM, nvim (AstroNvim)"
+FIM="$FIM\n\nAtalhos: super+Enter terminal, super+Espaço menu, alt+F1 ajuda\nApps: super+b Firefox, super+f PCManFM, nvim (AstroNvim)\nLog: $LOG"
+
+INSTALANDO=0
+exec 1>&3 2>&4
+if [ "$UI" = dialog ]; then
+  if [ $REINICIAR -eq 1 ]; then
+    if dlg "Pronto" --yes-label "Reiniciar agora" --no-label Depois --default-no --yesno "$FIM" 0 "$LARG"; then
+      clear; shutdown -r now; exit 0
+    fi
+  else
+    dlg "Pronto" --ok-label Fechar --msgbox "$FIM" 0 "$LARG" || true
+  fi
+  clear
+fi
+titulo "Pronto"
+_linhas "$(_t "$FIM")"

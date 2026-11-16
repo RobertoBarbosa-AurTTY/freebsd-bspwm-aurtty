@@ -96,17 +96,20 @@ do instalador, pela checagem de checksums e pelo teste manual em VM.
 
 ## Capturas
 
+**Instalador** (`bsddialog` no console: escolha do vídeo, resumo, progresso por etapa e tela final)
+![Instalador](docs/screenshots/installer-v4.png)
+
 **Tela de login** (LightDM com o tema `AurTTY-Login`)
 ![Tela de login](docs/screenshots/login-v2.png)
 
 **Área de trabalho** (polybar `bar07` em cima)
-![Área de trabalho](docs/screenshots/desktop-v3.png)
+![Área de trabalho](docs/screenshots/desktop-v4.png)
 
 **Menu de aplicativos** (`super+espaço`)
-![Menu do rofi](docs/screenshots/menu-v3.png)
+![Menu do rofi](docs/screenshots/menu-v4.png)
 
 **Terminal** (saudação do universo sorteada a cada terminal, com as informações do sistema ao lado)
-![Terminal](docs/screenshots/terminal-v3.png)
+![Terminal](docs/screenshots/terminal-v4.png)
 
 ## Arquitetura
 
@@ -182,6 +185,12 @@ git clone https://github.com/RobertoBarbosa-AurTTY/freebsd-bspwm-aurtty.git
 cd freebsd-bspwm-aurtty
 sh install.sh
 ```
+
+O instalador usa o `bsddialog` do sistema base (FreeBSD 14+), com menus, checklist
+e uma tela de progresso por etapa; o tema fica em `extras/installer/bsddialog.theme`.
+Sem terminal interativo ou com `AURTTY_TEXTO=1 sh install.sh`, as mesmas perguntas
+aparecem em texto simples. Durante a instalação, a saída detalhada vai para
+`/var/log/freebsd-bspwm-aurtty.log`.
 
 Perguntas feitas pelo instalador:
 
@@ -413,6 +422,7 @@ freebsd-bspwm-aurtty/
 ├── extras/
 │   ├── bash/                  # bashrc, fzf-tab-preview, universo/
 │   ├── bin/                   # atualizar, devdb
+│   ├── installer/             # tema do bsddialog usado pelo install.sh
 │   ├── fonts/                 # AurTTYIcons.otf
 │   ├── lightdm/               # gtk.css, avatar.png
 │   ├── polybar/               # fogo.ini

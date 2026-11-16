@@ -1,0 +1,60 @@
+### freebsd-bspwm-aurtty: tema do instalador (bsddialog --load-theme)
+# Fundo escuro com azul e magenta, no espírito do Tokyo Night do tema Emilia.
+# Cores: black red green yellow blue magenta cyan white (só as 8 do console).
+# Atributos: bold reverse underline blink halfbright highlight.
+
+version 1.0.5
+
+# Tela de fundo (backtitle)
+theme.screen.color blue black bold
+
+# Sombra
+theme.shadow.color black black
+theme.shadow.y 1
+theme.shadow.x 2
+
+# Janela
+theme.dialog.color white black
+theme.dialog.delimtitle true
+theme.dialog.titlecolor magenta black bold
+theme.dialog.lineraisecolor blue black
+theme.dialog.linelowercolor blue black
+theme.dialog.bottomtitlecolor cyan black bold
+theme.dialog.arrowcolor magenta black bold
+
+# Menus: --checklist, --menu, --radiolist
+theme.menu.f_prefixcolor white black
+theme.menu.prefixcolor white black
+theme.menu.f_selectorcolor white blue bold
+theme.menu.selectorcolor cyan black bold
+theme.menu.f_namecolor white blue bold
+theme.menu.namecolor cyan black bold
+theme.menu.f_desccolor white blue bold
+theme.menu.desccolor white black
+theme.menu.f_shortcutcolor white blue bold
+theme.menu.shortcutcolor magenta black bold
+theme.menu.bottomdesccolor cyan black
+theme.menu.sepnamecolor magenta black bold
+theme.menu.sepdesccolor magenta black
+
+# Campos de texto e senha
+theme.form.f_fieldcolor white cyan bold
+theme.form.fieldcolor white blue bold
+theme.form.readonlycolor cyan black bold
+theme.form.bottomdesccolor cyan black
+
+# Barra de progresso (--gauge)
+theme.bar.f_color white magenta bold
+theme.bar.color magenta black bold
+
+# Botões
+theme.button.minmargin 1
+theme.button.maxmargin 5
+theme.button.leftdelim <
+theme.button.rightdelim >
+theme.button.f_delimcolor white magenta bold
+theme.button.delimcolor blue black
+theme.button.f_color white magenta bold
+theme.button.color white black
+theme.button.f_shortcutcolor white magenta bold
+theme.button.shortcutcolor magenta black bold
