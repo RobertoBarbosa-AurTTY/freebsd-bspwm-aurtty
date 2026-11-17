@@ -57,7 +57,7 @@ xdo xdotool jq ImageMagick7 maim xclip pamixer playerctl pavucontrol pulseaudio
 i3lock-color webp webp-pixbuf-loader bash gsed coreutils git curl dbus jetbrains-mono noto-basic
 papirus-icon-theme eza zoxide fzf bat gawk gnugrep fastfetch python3
 firefox thunar thunar-archive-plugin gsimplecal xdg-user-dirs neovim ripgrep fd-find
-btop gdu bandwhich gping pftop doas"
+btop ncdu"
 
 # ferramentas de desenvolvimento backend (opcional). Os py3xx-* entram depois,
 # com a versão do python padrão do repositório. Sem Docker no FreeBSD.
@@ -845,42 +845,17 @@ install -m 755 "$RAIZ/extras/bin/atualizar" /usr/local/bin/atualizar
 # aurtty-update: git pull do repositório + install.sh --atualizar
 install -m 755 "$RAIZ/extras/bin/aurtty-update" /usr/local/bin/aurtty-update
 info "aurtty-update: traz a versão nova do repositório e reaplica as configs"
-# painéis da barra: RAM (btop), disco (gdu) e menu de rede/firewall
+# painéis da barra: RAM (btop) e disco (ncdu; o pacote gdu conflita com o coreutils e o remove)
 install -m 755 "$RAIZ/extras/bin/aurtty-painel" /usr/local/bin/aurtty-painel
-install -m 755 "$RAIZ/extras/bin/aurtty-rede" /usr/local/bin/aurtty-rede
 
-# doas: o sudo do OpenBSD; o grupo wheel pode virar root pedindo a própria senha
-# (usado pelo menu de rede para tráfego por programa, pftop e ligar/desligar o pf)
-if [ ! -e /usr/local/etc/doas.conf ]; then
-  printf '# gerado pelo freebsd-bspwm-aurtty\npermit persist :wheel\n' > /usr/local/etc/doas.conf
-  chmod 600 /usr/local/etc/doas.conf
-  info "doas: grupo wheel liberado (pede a senha do usuário)"
-fi
-
-# firewall (pf): bloqueia o que chega de fora e libera o que sai. Se o sshd está
-# ligado, a porta 22 fica aberta (senão o acesso remoto cairia).
-if [ ! -e /etc/pf.conf ] || grep -q 'freebsd-bspwm-aurtty' /etc/pf.conf; then
-  install -m 600 "$RAIZ/extras/pf/pf.conf" /etc/pf.conf
-  if [ "$(sysrc -n sshd_enable 2>/dev/null)" = YES ]; then
-    cat >> /etc/pf.conf <<'EOF2'
-
-# sshd ligado: acesso remoto liberado ("flags any" mantém a sessão já aberta
-# quando o pf é ligado durante a instalação por ssh)
-pass in quick proto tcp to port ssh flags any keep state
-EOF2
-  fi
-  sysrc -q pf_enable=YES pflog_enable=YES >/dev/null
-  kldload -n pf pflog 2>>"$LOG" || true      # o pfctl precisa do /dev/pf até para validar
-  if pfctl -nf /etc/pf.conf; then
-    service pflog restart >>"$LOG" 2>&1 || service pflog start >>"$LOG" 2>&1 || true
-    service pf restart >>"$LOG" 2>&1 || service pf start >>"$LOG" 2>&1 || true
-    info "firewall pf ligado: entrada bloqueada, saída liberada (menu de rede da barra)"
-  else
-    sysrc -q pf_enable=NO >/dev/null
-    FALHARAM="$FALHARAM pf.conf"
-  fi
-else
-  info "firewall: /etc/pf.conf já existe e não é deste projeto; mantido como está"
+# versões anteriores instalavam firewall (pf) e menu de rede: desliga e remove o que for deste projeto
+rm -f /usr/local/bin/aurtty-rede
+if [ -e /etc/pf.conf ] && grep -q 'freebsd-bspwm-aurtty' /etc/pf.conf; then
+  service pf onestop >>"$LOG" 2>&1 || true
+  service pflog onestop >>"$LOG" 2>&1 || true
+  sysrc -q -x pf_enable pflog_enable >/dev/null 2>&1 || true
+  rm -f /etc/pf.conf
+  info "firewall pf das versões anteriores desligado e removido"
 fi
 if [ "$(mount -p | awk '$2 == "/" {print $3}')" = zfs ]; then
   info "atualizar: tira uma cópia do sistema antes de atualizar (atualizar --voltar desfaz)"

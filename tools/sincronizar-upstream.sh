@@ -75,8 +75,7 @@ awk '
   { print }
 ' "$B/bars/bar07/modules.ini" > "$B/bars/bar07/modules.ini.new" && mv "$B/bars/bar07/modules.ini.new" "$B/bars/bar07/modules.ini"
 
-# cliques na barra: RAM abre o btop, disco o gdu e rede o menu de rede/firewall
-# (aurtty-painel e aurtty-rede, instalados pelo install.sh; o netmanager do tema é do Linux)
+# cliques na barra: RAM abre o btop e disco o ncdu (aurtty-painel, instalado pelo install.sh)
 awk '
   function clicavel(cmd) { sub(/= "/, "= \"%{A1:" cmd ":}"); sub(/"$/, "%{A}\"") }
   /^\[module\// { sec = $0 }
@@ -84,11 +83,9 @@ awk '
   sec == "[module/memory_bar]" && /^format = <label>/ { print "format = %{A1:aurtty-painel ram:}<label>%{A}"; next }
   sec == "[module/filesystem]" && /^format-prefix = "/ { clicavel("aurtty-painel disco") }
   sec == "[module/filesystem]" && /^format = <label>/ { print "format = %{A1:aurtty-painel disco:}<label>%{A}"; next }
-  sec == "[module/network]" && /^format-prefix = "/ { clicavel("aurtty-rede") }
-  sec == "[module/network]" { gsub(/OpenApps --netmanager/, "aurtty-rede") }
   { print }
 ' "$B/bars/bar07/modules.ini" > "$B/bars/bar07/modules.ini.new" && mv "$B/bars/bar07/modules.ini.new" "$B/bars/bar07/modules.ini"
-for m in "aurtty-painel ram" "aurtty-painel disco" "aurtty-rede"; do
+for m in "aurtty-painel ram" "aurtty-painel disco"; do
   grep -q "A1:$m:" "$B/bars/bar07/modules.ini" || { echo "bar07: clique '$m' não aplicado" >&2; exit 1; }
 done
 

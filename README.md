@@ -24,7 +24,7 @@
 - [Instalação](#instalação)
 - [Atualizar uma instalação existente](#atualizar-uma-instalação-existente)
 - [Componentes](#componentes)
-- [Painéis da barra e firewall](#painéis-da-barra-e-firewall)
+- [Painéis da barra](#painéis-da-barra)
 - [devdb: bancos em jails](#devdb-bancos-em-jails)
 - [Atualizações com rollback](#atualizações-com-rollback)
 - [Integridade e reprodutibilidade](#integridade-e-reprodutibilidade)
@@ -72,8 +72,9 @@ Também serve para **entusiastas do FreeBSD** que querem um desktop moderno sem
 repetir a configuração manual a cada instalação.
 
 > Escopo: o script prepara uma **estação de trabalho de estudo/desenvolvimento**.
-> Ele não é um appliance de segurança endurecido e não substitui firewall,
-> segmentação de rede ou ferramentas de produção. Bancos do `devdb` usam
+> Ele não é um appliance de segurança endurecido e **não configura firewall**:
+> se precisar de um, configure o `pf` à parte (FreeBSD Handbook, capítulo
+> *Firewalls*). Também não substitui segmentação de rede ou ferramentas de produção. Bancos do `devdb` usam
 > credenciais de desenvolvimento e devem ficar restritos à máquina local.
 
 ## Ficha técnica
@@ -82,7 +83,7 @@ repetir a configuração manual a cada instalação.
 |---|---|
 | Base | FreeBSD 14.x ou 15.x (amd64), recém-instalado |
 | Gerenciador de janelas | bspwm + sxhkd |
-| Barra / compositor | polybar (`bar07`) + picom |
+| Barra / compositor | polybar (`bar07`) + picom; painéis btop/ncdu por clique |
 | Launcher / menu | rofi, jgmenu |
 | Notificações / clipboard | dunst, clipcat |
 | Terminal / shell | alacritty; bash + oh-my-bash + ble.sh |
@@ -153,8 +154,8 @@ O `install.sh` roda com `set -eu` e executa as etapas na seguinte ordem:
 | 8 | AstroNvim | Baixa o template oficial com commit fixado e instala em `~/.config/nvim` |
 | 9 | Login | Instala e configura o LightDM com tema, sessão `bspwm (AurTTY)` e regras de polkit |
 | 10 | Terminal | oh-my-bash, ble.sh, fzf-tab, `eza`, `zoxide`, saudação do universo, `.bashrc` e `.bash_profile` |
-| 11 | Operação | Instala `atualizar` e, se escolhido, `devdb`; habilita Bastille no boot |
-| 12 | Ajustes | Em vesa/scfb troca o backend do picom para `xrender`; resume avisos e reboots pendentes |
+| 11 | Operação | Instala `atualizar`, `aurtty-update`, `aurtty-painel` e, se escolhido, `devdb`; habilita Bastille no boot |
+| 12 | Ajustes | Em vesa/scfb troca o backend do picom para `xrender`; remove o firewall pf de versões anteriores; resume avisos e reboots pendentes |
 
 O log completo fica em **`/var/log/freebsd-bspwm-aurtty.log`**. O script imprime
 cada pacote como `ok` ou `falhou` e, ao final, lista os que falharam (sem abortar
@@ -255,6 +256,10 @@ O que acontece no `--atualizar`:
   `~/.config-backup-<data>`; o caminho aparece no fim. Se você mexeu em algo à
   mão, copie de lá o que quiser manter.
 - **Senha e usuário** não são tocados.
+- **Firewall de versões anteriores:** se a máquina tiver o `/etc/pf.conf` criado
+  por uma versão antiga deste projeto, o pf é desligado (também no boot) e o
+  arquivo é apagado, junto com o menu de rede `aurtty-rede`. Um `pf.conf` seu,
+  que não é do projeto, não é alterado.
 - No fim, basta **sair e entrar de novo** na sessão (ou `super+alt+r` para
   recarregar o bspwm). Não precisa reiniciar.
 
@@ -319,7 +324,9 @@ uma jail própria, isolada do sistema e acessível em `127.0.0.1`.
 ### Shims FreeBSD (`freebsd-bin/`)
 
 Os scripts do tema Emilia esperam ferramentas GNU/Linux. Os shims ficam no
-início do `PATH` da sessão bspwm e evitam alterar o sistema:
+início do `PATH` da sessão bspwm e evitam alterar o sistema. Vários deles
+dependem do pacote **`coreutils`** (`gdate`, `gnustat`, `gshuf`): se ele for
+removido, a barra e o seletor de wallpaper deixam de funcionar.
 
 | Shim | Substitui | Implementação |
 |---|---|---|
@@ -370,7 +377,7 @@ FreeBSD dark e a sessão `bspwm (AurTTY)`.
 - Regra de polkit: o greeter roda como `lightdm`; usuários de `wheel`/`operator`
   podem desligar, reiniciar e suspender pela tela de login.
 
-## Painéis da barra e firewall
+## Painéis da barra
 
 Os módulos da barra abrem ferramentas com um clique, numa janela flutuante no
 centro da tela:
@@ -378,30 +385,15 @@ centro da tela:
 | Clique em | Abre | Para quê |
 |---|---|---|
 | RAM | `btop` | processos por memória, gráficos de CPU/RAM; `k` encerra o selecionado |
-| Disco | `gdu` | discos montados e pastas que mais ocupam; `d` apaga |
-| Rede | menu de rede | conexão (cabo/Wi-Fi, IP, gateway) e as opções abaixo |
+| Disco | `ncdu` | pastas que mais ocupam em `/`; `d` apaga |
 | Relógio | `gsimplecal` | calendário logo abaixo do relógio |
 
-Menu de rede:
+O módulo de rede mostra só a velocidade da interface padrão (B, K, M, G por
+segundo), calculada pelo shim `NetStatus` a cada 3 segundos.
 
-| Opção | Ferramenta |
-|---|---|
-| Latency | `gping` até o gateway e `1.1.1.1` |
-| Traffic by app | `bandwhich` (tráfego por programa e conexão) |
-| Open connections | `sockstat -46c` |
-| Firewall live | `pftop` (estados e regras do pf ao vivo) |
-| Firewall rules and stats | `pfctl -s info`, regras e os últimos bloqueios (`/var/log/pflog`) |
-| Firewall ON / OFF | liga ou desliga o pf (desligar vale até o próximo boot) |
-
-**Firewall:** o instalador liga o **pf** com `/etc/pf.conf` do projeto
-(`extras/pf/pf.conf`): bloqueia o que chega de fora, libera tudo que sai, aceita
-ping e ICMPv6, e registra os bloqueios no `pflog`. Se o `sshd` estiver ligado,
-a porta 22 continua aberta. Um `/etc/pf.conf` que já existia e não é deste
-projeto é mantido como está. Para abrir uma porta, acrescente por exemplo
-`pass in proto tcp to port 8080` e rode `doas pfctl -f /etc/pf.conf`.
-
-**doas:** o que precisa de root no menu de rede usa o `doas`, liberado para o
-grupo `wheel` pedindo a sua senha (`/usr/local/etc/doas.conf`).
+> O painel de disco usa o `ncdu`, e não o `gdu`: o pacote `gdu` conflita com o
+> `coreutils` (os dois instalam `/usr/local/bin/gdu`) e o `pkg` remove o
+> `coreutils` para instalá-lo, o que quebra os shims `date`/`stat`.
 
 ## devdb: bancos em jails
 
@@ -516,13 +508,12 @@ freebsd-bspwm-aurtty/
 ├── extras/
 │   ├── arte/                  # buraco-negro.webp (avatar da tela de login)
 │   ├── bash/                  # bashrc, fzf-tab-preview, universo/
-│   ├── bin/                   # atualizar, devdb, aurtty-update, aurtty-painel, aurtty-rede
+│   ├── bin/                   # atualizar, devdb, aurtty-update, aurtty-painel
 │   ├── firefox/               # policies.json (tema escuro, sem patrocinados)
 │   ├── fonts/                 # AurTTYIcons.otf
 │   ├── gsimplecal/            # calendário do relógio
 │   ├── installer/             # tema do bsddialog usado pelo install.sh
 │   ├── lightdm/               # gtk.css, avatar.png
-│   ├── pf/                    # pf.conf (firewall padrão)
 │   ├── polybar/               # fogo.ini
 │   └── walls/                 # wallpapers próprios
 ├── freebsd-bin/               # shims FreeBSD para scripts do tema
@@ -539,6 +530,9 @@ freebsd-bspwm-aurtty/
 |---|---|
 | Pacotes falharam no fim | `grep -i erro /var/log/freebsd-bspwm-aurtty.log` e instale manualmente com `pkg install` |
 | Driver de vídeo não carregou | Reinicie após a instalação; confira `kldstat` e `sysrc -n kld_list` |
+| Rede na barra mostra `exec: /usr/local/bin/gdate: not found` | O `coreutils` foi removido (normalmente pelo pacote `gdu`): `pkg install -y coreutils` ou `aurtty-update` |
+| Seletor de wallpaper sem miniaturas | Mesmo caso: confira `pkg info coreutils` e se `/usr/local/bin/gnustat` existe |
+| Barra com retângulos atrás dos ícones e terminal sem transparência | O picom não está rodando: `pgrep picom` e o erro em `~/.xsession-errors`. Depois de uma queda de energia, confira se o `picom.conf` não ficou corrompido e copie de novo de `dotfiles/config/bspwm/config/picom/` |
 | Cores invertidas/transparência estranha em VM | Esperado sem GPU: o instalador troca o picom para `xrender`; confirme em `~/.config/bspwm/config/picom/picom.conf` |
 | LightDM não aparece | `sysrc -n lightdm_enable`, `service lightdm status`, `/var/log/lightdm/` |
 | Tema ou avatar errado no login | Confira `/usr/local/etc/lightdm/lightdm-gtk-greeter.conf` e `/usr/local/share/themes/AurTTY-Login` |

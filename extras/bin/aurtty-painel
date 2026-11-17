@@ -3,10 +3,11 @@
 # (classe AurTTY-Panel, centralizada pelo ExternalRules do bspwm).
 # Uso: aurtty-painel ram | disco | <comando> [args...]
 #   ram    btop (processos por memória; k encerra o selecionado)
-#   disco  gdu (discos e pastas que mais ocupam; d apaga)
+#   disco  ncdu (pastas que mais ocupam em /; d apaga). Não usar gdu: o pacote
+#          conflita com o coreutils (/usr/local/bin/gdu) e o pkg remove o coreutils.
 case ${1:-} in
   ram)   set -- btop ;;
-  disco) set -- gdu -d ;;
+  disco) set -- ncdu -x / ;;
   "")    echo "uso: aurtty-painel ram | disco | <comando>" >&2; exit 1 ;;
 esac
 
