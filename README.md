@@ -83,7 +83,7 @@ repetir a configuração manual a cada instalação.
 |---|---|
 | Base | FreeBSD 14.x ou 15.x (amd64), recém-instalado |
 | Gerenciador de janelas | bspwm + sxhkd |
-| Barra / compositor | polybar (`bar07`) + picom; painéis btop/ncdu por clique |
+| Barra / compositor | polybar (`bar07`) + picom; painéis btop/Netdata/ncdu por clique |
 | Launcher / menu | rofi, jgmenu |
 | Notificações / clipboard | dunst, clipcat |
 | Terminal / shell | alacritty; bash + oh-my-bash + ble.sh |
@@ -385,7 +385,8 @@ centro da tela:
 | Clique em | Abre | Para quê |
 |---|---|---|
 | RAM | `btop` | processos por memória, gráficos de CPU/RAM; `k` encerra o selecionado |
-| Disco | `ncdu` | pastas que mais ocupam em `/`; `d` apaga |
+| Disco | Netdata (navegador) | gráficos de uso, leitura/escrita e latência dos discos, com histórico; também CPU, RAM e rede |
+| Disco (botão direito) | `ncdu` | pastas que mais ocupam em `/`; `d` apaga |
 | Relógio | `gsimplecal` | calendário logo abaixo do relógio |
 
 O módulo de rede mostra só a velocidade da interface padrão (B, K, M, G por
@@ -394,6 +395,11 @@ segundo), calculada pelo shim `NetStatus` a cada 3 segundos.
 > O painel de disco usa o `ncdu`, e não o `gdu`: o pacote `gdu` conflita com o
 > `coreutils` (os dois instalam `/usr/local/bin/gdu`) e o `pkg` remove o
 > `coreutils` para instalá-lo, o que quebra os shims `date`/`stat`.
+>
+> O Netdata roda como serviço (`netdata_enable=YES`), escuta só em
+> `127.0.0.1:19999` e usa cerca de 70 a 200 MB de RAM. Se ele estiver parado, o
+> clique esquerdo abre o `ncdu`. Para remover:
+> `sysrc -x netdata_enable; service netdata stop; pkg delete netdata`.
 
 ## devdb: bancos em jails
 

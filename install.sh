@@ -57,7 +57,7 @@ xdo xdotool jq ImageMagick7 maim xclip pamixer playerctl pavucontrol pulseaudio
 i3lock-color webp webp-pixbuf-loader bash gsed coreutils git curl dbus jetbrains-mono noto-basic
 papirus-icon-theme eza zoxide fzf bat gawk gnugrep fastfetch python3
 firefox thunar thunar-archive-plugin gsimplecal xdg-user-dirs neovim ripgrep fd-find
-btop ncdu"
+btop ncdu netdata"
 
 # ferramentas de desenvolvimento backend (opcional). Os py3xx-* entram depois,
 # com a versão do python padrão do repositório. Sem Docker no FreeBSD.
@@ -845,8 +845,13 @@ install -m 755 "$RAIZ/extras/bin/atualizar" /usr/local/bin/atualizar
 # aurtty-update: git pull do repositório + install.sh --atualizar
 install -m 755 "$RAIZ/extras/bin/aurtty-update" /usr/local/bin/aurtty-update
 info "aurtty-update: traz a versão nova do repositório e reaplica as configs"
-# painéis da barra: RAM (btop) e disco (ncdu; o pacote gdu conflita com o coreutils e o remove)
+# painéis da barra: RAM (btop) e disco (Netdata; clique direito: ncdu, pois o gdu conflita com o coreutils)
 install -m 755 "$RAIZ/extras/bin/aurtty-painel" /usr/local/bin/aurtty-painel
+# Netdata: o pacote já escuta só em 127.0.0.1:19999 e vem sem telemetria (.opt-out-from-anonymous-statistics)
+if pkg info -e netdata; then
+  sysrc -q netdata_enable=YES >/dev/null
+  service netdata status >/dev/null 2>&1 || service netdata start >>"$LOG" 2>&1 || true
+fi
 
 # versões anteriores instalavam firewall (pf) e menu de rede: desliga e remove o que for deste projeto
 rm -f /usr/local/bin/aurtty-rede

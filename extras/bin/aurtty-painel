@@ -1,14 +1,19 @@
 #!/bin/sh
 # freebsd-bspwm-aurtty: abre ferramentas do sistema numa janela flutuante
 # (classe AurTTY-Panel, centralizada pelo ExternalRules do bspwm).
-# Uso: aurtty-painel ram | disco | <comando> [args...]
+# Uso: aurtty-painel ram | disco | pastas | <comando> [args...]
 #   ram    btop (processos por memória; k encerra o selecionado)
-#   disco  ncdu (pastas que mais ocupam em /; d apaga). Não usar gdu: o pacote
+#   disco  Netdata no navegador (gráficos de uso, leitura/escrita e latência);
+#          se o serviço estiver parado, abre o ncdu
+#   pastas ncdu (pastas que mais ocupam em /; d apaga). Não usar gdu: o pacote
 #          conflita com o coreutils (/usr/local/bin/gdu) e o pkg remove o coreutils.
+NETDATA=http://127.0.0.1:19999
 case ${1:-} in
   ram)   set -- btop ;;
-  disco) set -- ncdu -x / ;;
-  "")    echo "uso: aurtty-painel ram | disco | <comando>" >&2; exit 1 ;;
+  disco) fetch -q -T 2 -o /dev/null "$NETDATA/api/v1/info" 2>/dev/null && exec firefox --new-window "$NETDATA/"
+         set -- ncdu -x / ;;
+  pastas) set -- ncdu -x / ;;
+  "")    echo "uso: aurtty-painel ram | disco | pastas | <comando>" >&2; exit 1 ;;
 esac
 
 # a janela fica aberta se o comando terminar com erro (para dar tempo de ler)

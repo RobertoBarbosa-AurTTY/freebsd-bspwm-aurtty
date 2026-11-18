@@ -75,19 +75,21 @@ awk '
   { print }
 ' "$B/bars/bar07/modules.ini" > "$B/bars/bar07/modules.ini.new" && mv "$B/bars/bar07/modules.ini.new" "$B/bars/bar07/modules.ini"
 
-# cliques na barra: RAM abre o btop e disco o ncdu (aurtty-painel, instalado pelo install.sh)
+# cliques na barra: RAM abre o btop; disco abre o Netdata (A1) e o ncdu (A3)
+# (aurtty-painel, instalado pelo install.sh)
 awk '
   function clicavel(cmd) { sub(/= "/, "= \"%{A1:" cmd ":}"); sub(/"$/, "%{A}\"") }
   /^\[module\// { sec = $0 }
   sec == "[module/memory_bar]" && /^format-prefix = "/ { clicavel("aurtty-painel ram") }
   sec == "[module/memory_bar]" && /^format = <label>/ { print "format = %{A1:aurtty-painel ram:}<label>%{A}"; next }
-  sec == "[module/filesystem]" && /^format-prefix = "/ { clicavel("aurtty-painel disco") }
-  sec == "[module/filesystem]" && /^format = <label>/ { print "format = %{A1:aurtty-painel disco:}<label>%{A}"; next }
+  sec == "[module/filesystem]" && /^format-prefix = "/ { sub(/= "/, "= \"%{A1:aurtty-painel disco:}%{A3:aurtty-painel pastas:}"); sub(/"$/, "%{A}%{A}\"") }
+  sec == "[module/filesystem]" && /^format = <label>/ { print "format = %{A1:aurtty-painel disco:}%{A3:aurtty-painel pastas:}<label>%{A}%{A}"; next }
   { print }
 ' "$B/bars/bar07/modules.ini" > "$B/bars/bar07/modules.ini.new" && mv "$B/bars/bar07/modules.ini.new" "$B/bars/bar07/modules.ini"
 for m in "aurtty-painel ram" "aurtty-painel disco"; do
   grep -q "A1:$m:" "$B/bars/bar07/modules.ini" || { echo "bar07: clique '$m' não aplicado" >&2; exit 1; }
 done
+grep -q "A3:aurtty-painel pastas:" "$B/bars/bar07/modules.ini" || { echo "bar07: clique direito do disco não aplicado" >&2; exit 1; }
 
 # relógio em 24h; clique abre o calendário (gsimplecal, abre na posição do mouse)
 awk '
